@@ -100,6 +100,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "non-functional-requirements.md",
+    "heading": "## Ledger mailbox seat channel",
+    "work_item": "livespec-dev-tooling-o767ny",
+    "first_seen": "2026-11-21"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "non-functional-requirements.md",
     "heading": "## Merged-green throughput telemetry",
     "work_item": "livespec-dev-tooling-gaetnq",
     "first_seen": "2026-11-18"
@@ -1139,6 +1146,13 @@
     "heading": "## Scenario: a scratch-branch incident drill runs beside production on the full master CI graph",
     "work_item": "livespec-dev-tooling-mdqkkz",
     "first_seen": "2026-11-10"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a seat reads a message another seat sent it through the ledger mailbox without any pane typing",
+    "work_item": "livespec-dev-tooling-o767ny",
+    "first_seen": "2026-11-21"
   },
   {
     "spec_root": "SPECIFICATION",
