@@ -9,8 +9,8 @@
 # role variable documented in the role's HOST_VARS.md.
 #
 # THIS CONVERGE RESTARTS NOTHING AND DRAINS NOTHING. The retention is a oneshot
-# unit of its own; arming its timer touches neither dockerd nor any service on
-# the host. What it changes is one script, two units and one enabled timer.
+# units of their own; arming either timer touches neither dockerd nor any
+# service on the host. The frequent unit adds only scratch and pytest cleanup.
 #
 # WHY THE TIMER IS STARTED BY THE CONVERGE AND NOT LEFT TO THE NEXT BOOT. The
 # dev host is deliberately long-lived — it is also the Ansible control node —
@@ -29,6 +29,10 @@
       - dev_host_retention_unit_dir | string | length > 0
       - dev_host_retention_service | string | length > 0
       - dev_host_retention_timer | string | length > 0
+      - dev_host_retention_scratch_bin | string | length > 0
+      - dev_host_retention_scratch_service | string | length > 0
+      - dev_host_retention_scratch_timer | string | length > 0
+      - dev_host_retention_scratch_on_unit_active_sec | string | length > 0
       - dev_host_retention_checkout_roots | length > 0
       - dev_host_retention_filesystem | string | length > 0
       - dev_host_retention_user | string | length > 0
@@ -170,6 +174,19 @@
     validate: bash -n %s
   become: true
 
+- name: Install the dev host scratch-only retention script
+  # The frequent timer intentionally invokes a separate entry point: sourcing
+  # the helper keeps the liveness predicate identical to the daily run without
+  # paying for its docker, uv, gate-run or bulk-dump legs.
+  ansible.builtin.copy:
+    src: dev-host-retention-scratch-only.sh
+    dest: "{{ dev_host_retention_scratch_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+    validate: bash -n %s
+  become: true
+
 - name: Install the dev host capacity check script
   ansible.builtin.copy:
     src: dev-host-capacity-check.sh
@@ -199,6 +216,12 @@
   become: true
   register: dev_host_retention_timer_unit
 
+- name: Check whether the dev host scratch-only retention timer unit is already installed
+  ansible.builtin.stat:
+    path: "{{ dev_host_retention_unit_dir }}/{{ dev_host_retention_scratch_timer }}"
+  become: true
+  register: dev_host_retention_scratch_timer_unit
+
 - name: Install the dev host retention service unit
   ansible.builtin.template:
     src: livespec-dev-host-retention.service.j2
@@ -217,6 +240,25 @@
     mode: "0644"
   become: true
   notify: Restart the dev host retention timer
+
+- name: Install the dev host scratch-only retention service unit
+  ansible.builtin.template:
+    src: livespec-dev-host-retention-scratch.service.j2
+    dest: "{{ dev_host_retention_unit_dir }}/{{ dev_host_retention_scratch_service }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Install the dev host scratch-only retention timer unit
+  ansible.builtin.template:
+    src: livespec-dev-host-retention-scratch.timer.j2
+    dest: "{{ dev_host_retention_unit_dir }}/{{ dev_host_retention_scratch_timer }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart the dev host scratch-only retention timer
 
 - name: Install the dev host capacity check service unit
   ansible.builtin.template:
@@ -248,6 +290,17 @@
     daemon_reload: true
   become: true
   when: not ansible_check_mode or dev_host_retention_timer_unit.stat.exists
+
+- name: Enable and start the dev host scratch-only retention timer
+  # This shares the committed hold with the daily timer.  A partial hold would
+  # leave the timer that fills /tmp still armed.
+  ansible.builtin.systemd_service:
+    name: "{{ dev_host_retention_scratch_timer }}"
+    enabled: "{{ dev_host_retention_timer_enabled }}"
+    state: "{{ 'started' if dev_host_retention_timer_enabled else 'stopped' }}"
+    daemon_reload: true
+  become: true
+  when: not ansible_check_mode or dev_host_retention_scratch_timer_unit.stat.exists
 
 - name: Enable and start the dev host capacity check timer
   ansible.builtin.systemd_service:

@@ -1,0 +1,12 @@
+{# The frequent timer has no daily run's expensive reclamation legs. -#}
+# {{ ansible_managed }}
+[Unit]
+Description=Every-two-hours reclamation of this dev host's scratch
+
+[Timer]
+OnUnitActiveSec={{ dev_host_retention_scratch_on_unit_active_sec }}
+Persistent=true
+Unit={{ dev_host_retention_scratch_service }}
+
+[Install]
+WantedBy=timers.target

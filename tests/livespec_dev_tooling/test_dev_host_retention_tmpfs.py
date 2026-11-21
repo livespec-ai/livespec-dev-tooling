@@ -19,6 +19,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 _ROLE = _ROOT / "ansible" / "roles" / "dev_host_retention"
 _RETENTION = _ROLE / "files" / "dev-host-retention.sh"
 _SCRATCH = _ROLE / "files" / "dev-host-retention-scratch.sh"
+_SCRATCH_ONLY_RETENTION = _ROLE / "files" / "dev-host-retention-scratch-only.sh"
+_SCRATCH_ONLY_TIMER = _ROLE / "templates" / "livespec-dev-host-retention-scratch.timer.j2"
 _CAPACITY = _ROLE / "files" / "dev-host-capacity-check.sh"
 _CAPACITY_TIMER = _ROLE / "templates" / "livespec-dev-host-capacity-check.timer.j2"
 # The retention period and the ages straddle it by an hour each way, so a run
@@ -114,6 +116,56 @@ def _hermetic_env(*, tmp_path: Path, tmp_root: Path, bulk: Path) -> dict[str, st
         "LIVESPEC_DEV_HOST_UV_CACHE_DIR": str(uv_cache),
         "LIVESPEC_DEV_HOST_RETENTION_STATE_DIR": str(tmp_path / "state"),
     }
+
+
+def test_scratch_only_retention_removes_dead_scratch_and_fires_every_two_hours(
+    *, tmp_path: Path
+) -> None:
+    """The frequent run keeps live Claude scratch while reclaiming dead scratch and pytest.
+
+    This is deliberately driven through the scratch-only entry point, rather
+    than the daily retention script: a two-hour run must not pay for docker,
+    uv, gate-run, marketplace-backup, or bulk-dump retention.
+    """
+    assert _SCRATCH_ONLY_RETENTION.is_file(), (
+        "the role must ship a scratch-and-pytest-only retention entry point for "
+        "the frequent timer"
+    )
+    tmp_root = tmp_path / "tmp"
+    dead = tmp_root / "claude-1000" / "project" / "dead"
+    live = tmp_root / "claude-1000" / "project" / "live"
+    old_pytest = tmp_root / "pytest-of-ubuntu" / "pytest-1"
+    for directory in (dead, live, old_pytest):
+        directory.mkdir(parents=True)
+        _age(path=directory, seconds=_AGED_SECONDS)
+    proc_root = tmp_path / "proc"
+    environment = proc_root / "100" / "environ"
+    environment.parent.mkdir(parents=True)
+    environment.write_bytes(b"CLAUDE_CODE_SESSION_ID=live\0")
+
+    done = subprocess.run(
+        ["bash", str(_SCRATCH_ONLY_RETENTION)],
+        env=_hermetic_env(tmp_path=tmp_path, tmp_root=tmp_root, bulk=tmp_path / "bulk")
+        | {"LIVESPEC_DEV_HOST_RETENTION_PROC_ROOT": str(proc_root)},
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not dead.exists(), done.stdout
+    assert live.exists(), done.stdout
+    assert not old_pytest.exists(), done.stdout
+    assert "free space before:" in done.stdout and "free space after:" in done.stdout, done.stdout
+
+    timer = _SCRATCH_ONLY_TIMER.read_text(encoding="utf-8")
+    assert "OnUnitActiveSec={{ dev_host_retention_scratch_on_unit_active_sec }}" in timer
+    assert "Unit={{ dev_host_retention_scratch_service }}" in timer
+    defaults = (_ROLE / "defaults" / "main.yml").read_text(encoding="utf-8")
+    assert "dev_host_retention_scratch_on_unit_active_sec: 2h" in defaults
+    assert "dev_host_retention_scratch_on_unit_active_sec" in (_ROLE / "HOST_VARS.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_retention_keeps_a_live_session_when_an_environment_cannot_be_read(

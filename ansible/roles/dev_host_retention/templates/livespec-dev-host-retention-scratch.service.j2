@@ -1,0 +1,15 @@
+{# The cheap companion to the daily retention service: it retains only /tmp
+   Claude Code and pytest scratch, using the daily run's exact helper. -#}
+# {{ ansible_managed }}
+[Unit]
+Description=Reclaim this dev host's aged Claude Code and pytest scratch
+Documentation=https://github.com/livespec-ai/livespec-dev-tooling/blob/master/ansible/roles/dev_host_retention/HOST_VARS.md
+
+[Service]
+Type=oneshot
+ExecStart={{ dev_host_retention_scratch_bin }}
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec={{ dev_host_retention_timeout_start_sec }}
+Environment="LIVESPEC_DEV_HOST_SCRATCH_RETENTION_SECONDS={{ dev_host_retention_scratch_retention_hours | int * 3600 }}"
+Environment="LIVESPEC_DEV_HOST_RETENTION_SCRATCH_HELPER={{ dev_host_retention_bin | dirname }}/dev-host-retention-scratch.sh"
