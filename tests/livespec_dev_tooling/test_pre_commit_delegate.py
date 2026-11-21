@@ -596,11 +596,17 @@ def test_only_a_clean_full_pre_commit_aggregate_records_reusable_evidence(
 
 
 def _run_main_with_delegated_verdict(
-    *, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **verdict_fields: object
+    *,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    origin_url: str | None = None,
+    **verdict_fields: object,
 ) -> tuple[int, dict[str, object]]:
     """Run the delegate's CLI with a stubbed verdict; return its status and token."""
     module = _module()
     _git(cwd=tmp_path, args=["init", "-q", "-b", "main"])
+    if origin_url is not None:
+        _git(cwd=tmp_path, args=["remote", "add", "origin", origin_url])
     scrubbed = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("sys.argv", ["pre_commit_delegate", "run"])
@@ -612,6 +618,49 @@ def _run_main_with_delegated_verdict(
     token_path = tmp_path / ".git" / "livespec-green-token.json"
     token = json.loads(token_path.read_text(encoding="utf-8")) if token_path.exists() else {}
     return status, token
+
+
+def test_a_delegated_pre_commit_emits_one_staged_outcome_span(
+    *, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A completed pre-commit delegation is distinguishable from a pre-push gate."""
+    telemetry = importlib.import_module("livespec_dev_tooling.gate_outcome_telemetry")
+    delivered: list[dict[str, object]] = []
+
+    def capture(*, endpoint: str, payload: dict[str, object]) -> None:
+        delivered.append({"endpoint": endpoint, "payload": payload})
+
+    monkeypatch.setattr(telemetry, "post_span", capture)
+
+    status, _ = _run_main_with_delegated_verdict(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        origin_url="git@github.com:acme/widget.git",
+        local=False,
+        reason="the Job passed",
+        job_name="gate-pre-commit-1",
+        tree_hash="a" * 40,
+        exit_status=0,
+    )
+
+    assert status == 0
+    assert len(delivered) == 1
+    assert delivered[0]["endpoint"] == telemetry.DEFAULT_ENDPOINT
+    payload = delivered[0]["payload"]
+    assert isinstance(payload, dict)
+    spans = payload["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    assert len(spans) == 1
+    attributes = {
+        attribute["key"]: next(iter(attribute["value"].values()))
+        for attribute in spans[0]["attributes"]
+    }
+    assert attributes == {
+        "livespec.gate.outcome": "passed",
+        "livespec.gate.repository": "widget",
+        "livespec.gate.tree_hash": "a" * 40,
+        "livespec.gate.job_name": "gate-pre-commit-1",
+        "livespec.gate.stage": "pre-commit",
+    }
 
 
 def test_a_passing_delegated_aggregate_records_reusable_same_tree_evidence(
