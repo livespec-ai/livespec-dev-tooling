@@ -268,6 +268,9 @@ tells the owning seat; a seat is asked only when the remedy needs its scope or p
   ships). After a revise ratifies, name the ratified headings in References first. [6tgd2z 2026-11-15T04:19:28Z.]
 - A DoD edit (a References repair included) changes the behaviour digest and voids a prior tier release; re-read the
   tier after it. [6tgd2z 2026-11-10T00:34:19Z, 2026-11-15T03:54:05Z.]
+- Repair References FIRST, release the tier SECOND. A References-line edit made after a `release-spec-tier` silently
+  voids the release (bd-ib-qc6btm), and the next screen re-holds the item on the same topic. Measured on bd-ib-4ifdud
+  2026-11-21 ~23:2xZ by legacy-dispatcher-agent. [6tgd2z 2026-11-21 ~23:3xZ.]
 - Release any held item that is not a contract, safety or user-promise change as internal: press
   `release-spec-tier:<id>:<## heading>` itself, citing the nearest ratified heading and recording the basis on the item.
   A hold on a genuine contract change still waits for its propose-change. For work that is a contract, the tier release
