@@ -157,7 +157,13 @@ def env(tmp_path: Path) -> _Env:
 
 
 def _run(
-    *, env: _Env, action: str, host: str = _HOST, confirm: str = _NODE, remove_fails: str = ""
+    *,
+    env: _Env,
+    action: str,
+    host: str = _HOST,
+    confirm: str = _NODE,
+    remove_fails: str = "",
+    force_archive: str = "",
 ) -> subprocess.CompletedProcess[str]:
     return run_under_hang_guard(
         ["/bin/bash", str(_SCRIPT), action, host],
@@ -176,6 +182,7 @@ def _run(
             "WINDOW_POLL_SECONDS": "1",
             "WINDOW_RETRY_SECONDS": "0",
             "REMOVE_FAILS": remove_fails,
+            "WINDOW_FORCE_ARCHIVE": force_archive,
         },
         check=False,
     )
@@ -216,7 +223,9 @@ def _snapshot_then_change_queue(env: _Env) -> None:
     (env.state / "cq").write_text(json.dumps(_CHANGED), encoding="utf-8")
 
 
-@pytest.mark.parametrize("action", ["snapshot", "join", "drill", "remove", "check", "revert"])
+@pytest.mark.parametrize(
+    "action", ["snapshot", "archive-snapshot", "join", "drill", "remove", "check", "revert"]
+)
 def test_every_action_refuses_a_node_confirm_that_is_not_the_workers_name(
     env: _Env, action: str
 ) -> None:
@@ -257,6 +266,65 @@ def test_snapshot_strips_server_metadata_records_its_time_and_is_never_overwritt
     assert second.returncode != 0
     assert "refusing to replace" in second.stderr
     assert json.loads(_snapshot_path(env).read_text(encoding="utf-8")) == snap
+
+
+def test_archive_snapshot_moves_a_stale_snapshot_aside_so_a_new_window_can_snapshot(
+    env: _Env,
+) -> None:
+    assert _run(env=env, action="snapshot").returncode == 0
+    _age_snapshot(env, seconds=90000)
+    stale = _snapshot_path(env).read_text(encoding="utf-8")
+    result = _run(env=env, action="archive-snapshot")
+    assert result.returncode == 0, result.stderr
+    assert not _snapshot_path(env).exists()
+    assert [a.read_text(encoding="utf-8") for a in _archives(env)] == [stale]
+    assert _run(env=env, action="snapshot").returncode == 0
+
+
+def test_archive_snapshot_refuses_a_fresh_snapshot_and_changes_nothing(env: _Env) -> None:
+    assert _run(env=env, action="snapshot").returncode == 0
+    fresh = _snapshot_path(env).read_text(encoding="utf-8")
+    result = _run(env=env, action="archive-snapshot")
+    assert result.returncode != 0
+    assert "inside the 86400 s window limit" in result.stderr
+    assert _snapshot_path(env).read_text(encoding="utf-8") == fresh
+    assert _archives(env) == []
+
+
+def test_archive_snapshot_archives_a_fresh_snapshot_only_when_forced_with_the_node_name(
+    env: _Env,
+) -> None:
+    assert _run(env=env, action="snapshot").returncode == 0
+    wrong = _run(env=env, action="archive-snapshot", force_archive="not-the-node")
+    assert wrong.returncode != 0
+    assert _snapshot_path(env).exists()
+    forced = _run(env=env, action="archive-snapshot", force_archive=_NODE)
+    assert forced.returncode == 0, forced.stderr
+    assert not _snapshot_path(env).exists()
+    assert len(_archives(env)) == 1
+
+
+def test_archive_snapshot_archives_an_unreadable_snapshot(env: _Env) -> None:
+    assert _run(env=env, action="snapshot").returncode == 0
+    _snapshot_path(env).write_text("not json", encoding="utf-8")
+    assert _run(env=env, action="archive-snapshot").returncode == 0
+    assert len(_archives(env)) == 1
+
+
+def test_archive_snapshot_with_no_snapshot_says_so_and_exits_zero(env: _Env) -> None:
+    result = _run(env=env, action="archive-snapshot")
+    assert result.returncode == 0
+    assert "nothing to archive" in result.stdout
+
+
+def test_archive_snapshot_touches_no_cluster_state_and_runs_no_worker_script(env: _Env) -> None:
+    assert _run(env=env, action="snapshot").returncode == 0
+    _age_snapshot(env, seconds=90000)
+    (env.state / "cq").write_text(json.dumps(_CHANGED), encoding="utf-8")
+    (env.state / "calls.log").write_text("", encoding="utf-8")
+    assert _run(env=env, action="archive-snapshot").returncode == 0
+    assert json.loads((env.state / "cq").read_text(encoding="utf-8")) == _CHANGED
+    assert _calls(env) == []
 
 
 def test_join_is_refused_without_a_snapshot_for_this_window(env: _Env) -> None:
