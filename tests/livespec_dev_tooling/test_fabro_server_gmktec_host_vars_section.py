@@ -86,7 +86,8 @@ _DEPLOYED_COMMIT = "9f6c38f"
 # Petri c6bfd5e3 output-drain fix (thewoolleyman/fabro#33).
 # 2026-11-12: every gmktec instance is pinned to d22808f, the 0.408 build the
 # candidate proved (bd-ib-tcdmkr).
-_FLEET_COMMIT = "d22808f"
+# 2026-11-21: bee5378, d22808f plus only the sandbox-leak fixes (bd-ib-g6dkdt: fork PRs 42, 43).
+_FLEET_COMMIT = "bee5378"
 # The candidate's build: the carrier tip on that branch, the fleet build plus the
 # node name on run_turn spans (thewoolleyman/fabro#14). The maintainer ruled it
 # onto the candidate and fabro-server-mi-homelab on 2026-11-02 (plan
@@ -101,7 +102,8 @@ _FLEET_COMMIT = "d22808f"
 # parity sample (bd-ib-u4fp5z); after it passed, the candidate returned to 85071c8.
 # 2026-11-12: d22808f, 85071c8 plus the sqlx patch for RUSTSEC-2026-0459 (bd-ib-tcdmkr).
 # 2026-11-14: the candidate alone runs c047301, d22808f plus the lost-sandbox resume (bd-ib-gngz5d).
-_CANDIDATE_COMMIT = "c047301"
+# 2026-11-21: c0a08da, c047301 plus the same two sandbox-leak fixes (bd-ib-g6dkdt).
+_CANDIDATE_COMMIT = "c0a08da"
 _PINNED_COMMIT = {"fabro-server": _FLEET_COMMIT, "fabro-server-candidate": _CANDIDATE_COMMIT}
 _SUPERSEDED_CARRIER = "adeefec"
 _SUPERSEDED_BUILD_REFERENCE = "#1048"
