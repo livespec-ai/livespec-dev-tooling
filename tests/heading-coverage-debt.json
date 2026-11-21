@@ -2011,6 +2011,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: the incident fleet audit refuses readiness when an adopter's observer-dependent CI cannot reach the observer",
+    "work_item": "livespec-dev-tooling-7jxppa",
+    "first_seen": "2026-11-21"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: the incident-merge principal merges a green expedited repair outside the merge queue and records it",
     "work_item": "livespec-dev-tooling-u3nbm3",
     "first_seen": "2026-11-18"

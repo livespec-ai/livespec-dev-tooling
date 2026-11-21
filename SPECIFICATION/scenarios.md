@@ -4227,6 +4227,16 @@ And the incident enablement step run for that consumer MUST refuse, exit non-zer
 And the same command run against a manifest whose committed identity cannot be authenticated MUST report that finding, list zero ready repositories and exit non-zero.
 ```
 
+## Scenario: the incident fleet audit refuses readiness when an adopter's observer-dependent CI cannot reach the observer
+
+Given an adopter whose observer installation and every incident surface row carry verified implemented claims
+And whose incident-ci job takes its runs-on from a repository variable reading ["ubuntu-latest"]
+When the operator runs `just incident-fleet-audit`
+Then the ready list MUST NOT include that adopter
+And its findings MUST name the adopter, the incident-ci job and the label expression
+And the same audit MUST also refuse readiness, naming the missing input, when the adopter's check-red-green-replay step lacks LIVESPEC_INCIDENT_OBSERVER_CONNECT_ADDR
+And the incident enablement step run for that adopter MUST refuse and enable nothing.
+
 ## Scenario: the incident enablement step records enablement on the independent controller and every vantage reads it
 
 ```gherkin
