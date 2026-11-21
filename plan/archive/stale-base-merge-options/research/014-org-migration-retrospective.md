@@ -280,6 +280,27 @@ raise lifting the gate for that fix at once, with bounds.
   [`livespec-dev-tooling-hpef4m`](https://vps.perch-rudd.ts.net:8010/project?id=ad6f454d-52f2-4f19-8514-22dc14ff5cc9&bead=livespec-dev-tooling-hpef4m) (a fix ruling reads the current
   code it rules on, and records that read, before the fix is routed).
 
+### A6. The cutover repointed an image ref to a path nobody published
+
+Added 2026-11-21 on the maintainer's delegated attestation of o6mqy5 (candidate
+recorded on o6mqy5, 2026-11-20T02:19Z).
+
+- **Cause:** commit c68f35435 (livespec-dev-tooling-nwzkto) rewrote
+  `homelab-worker/image/ref` to `ghcr.io/livespec-ai/livespec-worker-node@sha256:8a9de263...`.
+  An anonymous-token registry manifest read returns 404 at the org path and 200 at
+  `ghcr.io/thewoolleyman/livespec-worker-node@sha256:8a9de263...`. The owner-string sweep
+  treated an image ref as text, with no check that the target was published at the
+  new owner; ghcr packages do not follow a repo-transfer redirect.
+- **Cost:** the m4 homelab worker pulled the 404 path at about 01:23Z on 2026-11-20, the
+  join replaced the running container and left the node NotReady. A fleet sweep of
+  origin/master in all 26 clones found it the ONE live `ghcr.io/livespec-ai/` ref that
+  does not resolve (the livespec-fabro-sandbox pins all return 200). Not checked:
+  consumer-credential pulls and package visibility (the gh token lacks read:packages).
+- **Window:** cutover 2026-11-15 to the m4 pull at about 01:23Z on 2026-11-20.
+- **Prevention:** [`livespec-dev-tooling-3gwvjb`](https://vps.perch-rudd.ts.net:8010/project?id=ad6f454d-52f2-4f19-8514-22dc14ff5cc9&bead=livespec-dev-tooling-3gwvjb) (a gate on any image-ref change that reads the
+  manifest at the new path; `pending-approval`, parked, not dispatched). The fix for the
+  live ref is owned by homelab-k8s-worker-nodes.
+
 ## Coordinator failures (legacy-coordinator-agent's RETRO INPUT, 2026-11-15 23:07Z)
 
 ### C1. The master-green circle: the obvious bypass never offered
