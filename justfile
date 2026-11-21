@@ -221,6 +221,12 @@ ensure-plugins-fleet build:
 adopt-orchestrator-build clone build:
     mise exec -- uv run --no-sync python -m livespec_dev_tooling.fleet.adopt_orchestrator_build "$1" "$2"
 
+# Remove project-scope Claude plugin records left by a worktree that no longer
+# exists. This is the supported cleanup route; never hand-edit the registry.
+[positional-arguments]
+evict-removed-project-plugin-records removed_worktree:
+    mise exec -- uv run --no-sync python -m livespec_dev_tooling.fleet.evict_removed_project_records "$1"
+
 # Report any project-scope plugin update or install outside `ensure-plugins`,
 # `adopt-orchestrator-build` and `ensure-plugins-fleet` in this checkout's
 # recipes, hooks, verbs and skills, and any enabled automatic plugin update in

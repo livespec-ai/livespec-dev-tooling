@@ -48,6 +48,7 @@ __all__: list[str] = [
     "installed_build",
     "orchestrator_state",
     "repair_notice",
+    "restore_other_project_records",
     "without_plugin_commands",
 ]
 
@@ -131,6 +132,58 @@ def without_plugin_commands(
         for command in commands
         if not (command[2] in {"install", "update"} and command[3] == plugin)
     )
+
+
+def restore_other_project_records(  # noqa: PLR0911 — malformed registry forms are distinct no-op cases.
+    *, before_text: str | None, after_text: str | None, project_root: str
+) -> str | None:
+    """Restore other projects' records while retaining this project's new record.
+
+    A project-scoped Claude install should change only the invoking project's
+    record. A linked-worktree install has instead rewritten its primary
+    checkout's record, so reconcile puts every other project record back from
+    its pre-command snapshot after the install completes.
+    """
+    if before_text is None or after_text is None:
+        return None
+    try:
+        before = cast("object", json.loads(before_text))
+        after = cast("object", json.loads(after_text))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return None
+    before_mapping = cast("dict[str, object]", before)
+    after_mapping = cast("dict[str, object]", after)
+    before_plugins, after_plugins = before_mapping.get("plugins"), after_mapping.get("plugins")
+    if not isinstance(before_plugins, dict) or not isinstance(after_plugins, dict):
+        return None
+    before_records, after_records = (
+        cast("dict[str, object]", before_plugins).get(ORCHESTRATOR_PLUGIN),
+        cast("dict[str, object]", after_plugins).get(ORCHESTRATOR_PLUGIN),
+    )
+    if not isinstance(before_records, list) or not isinstance(after_records, list):
+        return None
+    before_records = cast("list[object]", before_records)
+    after_records = cast("list[object]", after_records)
+
+    def target_record(entry: object) -> bool:
+        return (
+            isinstance(entry, dict)
+            and cast("dict[str, object]", entry).get("scope") == "project"
+            and cast("dict[str, object]", entry).get("projectPath") == project_root
+        )
+
+    restored_records = [
+        *(entry for entry in before_records if not target_record(entry)),
+        *(entry for entry in after_records if target_record(entry)),
+    ]
+    if restored_records != after_records:
+        updated = cast("dict[str, object]", json.loads(json.dumps(after)))
+        updated_plugins = cast("dict[str, object]", updated["plugins"])
+        updated_plugins[ORCHESTRATOR_PLUGIN] = restored_records
+        return json.dumps(updated, indent=2) + ("\n" if after_text.endswith("\n") else "")
+    return None
 
 
 def hold_notice(*, state: OrchestratorState, project_root: str) -> tuple[str, ...]:

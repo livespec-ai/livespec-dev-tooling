@@ -58,6 +58,7 @@ from livespec_dev_tooling.fleet._orchestrator_hold import (  # noqa: E402
     hold_notice,
     orchestrator_state,
     repair_notice,
+    restore_other_project_records,
     without_plugin_commands,
 )
 from livespec_dev_tooling.fleet._plugin_settings import vacuity_findings  # noqa: E402
@@ -74,6 +75,7 @@ __all__: list[str] = [
     "PluginCommandResult",
     "PluginCommandRunner",
     "RegistryReader",
+    "RegistryWriter",
     "ensure",
     "ensure_report",
     "main",
@@ -91,6 +93,12 @@ class RegistryReader(Protocol):
     """Callable seam reading the installed-plugins registry, or None if absent."""
 
     def __call__(self) -> str | None: ...
+
+
+class RegistryWriter(Protocol):
+    """Callable seam persisting the installed-plugin registry after a repair."""
+
+    def __call__(self, text: str) -> str: ...
 
 
 def settings_findings(*, settings_text: str) -> tuple[str, ...]:
@@ -150,7 +158,7 @@ class EnsureReport:
     notices: tuple[str, ...]
 
 
-def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding proven skip sets.
+def ensure_report(  # noqa: PLR0913, C901 — preserve existing I/O seams while adding proven skip sets.
     *,
     settings_text: str,
     project_root: str,
@@ -160,6 +168,7 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
     remove_cache_dir: CacheDirRemover = remove_plugin_cache_dir,
     current_plugins: frozenset[str] = frozenset(),
     registered_marketplaces: frozenset[str] = frozenset(),
+    write_registry: RegistryWriter | None = None,
 ) -> EnsureReport:
     """Provision from settings, then confirm it landed.
 
@@ -180,6 +189,7 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
         read_registry=read_registry,
         read_artifact=read_artifact,
     )
+    registry_before_commands = read_registry()
     notices = hold_notice(state=state, project_root=project_root)
     commands = planned_commands(settings_text=settings_text)
     if state.kind == STATE_HELD:
@@ -194,9 +204,20 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
         )
     )
     command_findings = _run_commands(commands=needed, runner=runner)
+    registry_text = read_registry()
+    restore_finding = _restore_other_project_records(
+        state_kind=state.kind,
+        project_root=project_root,
+        before_text=registry_before_commands,
+        after_text=registry_text,
+        write_registry=write_registry,
+    )
+    if restore_finding:
+        return EnsureReport(findings=(*command_findings, restore_finding), notices=notices)
+    if write_registry is not None:
+        registry_text = read_registry()
     if command_findings:
         return EnsureReport(findings=command_findings, notices=notices)
-    registry_text = read_registry()
     findings = registry_findings(
         settings_text=settings_text,
         project_root=project_root,
@@ -217,6 +238,17 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
                 )
         command_findings = _run_commands(commands=commands, runner=runner)
         registry_text = read_registry()
+        restore_finding = _restore_other_project_records(
+            state_kind=state.kind,
+            project_root=project_root,
+            before_text=registry_before_commands,
+            after_text=registry_text,
+            write_registry=write_registry,
+        )
+        if restore_finding:
+            return EnsureReport(findings=(restore_finding,), notices=notices)
+        if write_registry is not None:
+            registry_text = read_registry()
         findings = command_findings or registry_findings(
             settings_text=settings_text,
             project_root=project_root,
@@ -225,6 +257,23 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
         )
     repaired = repair_notice(state=state, project_root=project_root, registry_text=registry_text)
     return EnsureReport(findings=findings, notices=(*notices, *repaired))
+
+
+def _restore_other_project_records(
+    *,
+    state_kind: str,
+    project_root: str,
+    before_text: str | None,
+    after_text: str | None,
+    write_registry: RegistryWriter | None,
+) -> str:
+    """Repair a fresh worktree's unintended rewrite of another project's record."""
+    if state_kind != "absent" or write_registry is None:
+        return ""
+    restored = restore_other_project_records(
+        before_text=before_text, after_text=after_text, project_root=project_root
+    )
+    return "" if restored is None else write_registry(restored)
 
 
 def ensure(  # noqa: PLR0913 — preserve existing I/O seams while adding proven skip sets.
@@ -237,6 +286,7 @@ def ensure(  # noqa: PLR0913 — preserve existing I/O seams while adding proven
     remove_cache_dir: CacheDirRemover = remove_plugin_cache_dir,
     current_plugins: frozenset[str] = frozenset(),
     registered_marketplaces: frozenset[str] = frozenset(),
+    write_registry: RegistryWriter | None = None,
 ) -> tuple[str, ...]:
     """Provision from settings, then confirm it landed. Empty means provisioned."""
     return ensure_report(
@@ -248,6 +298,7 @@ def ensure(  # noqa: PLR0913 — preserve existing I/O seams while adding proven
         remove_cache_dir=remove_cache_dir,
         current_plugins=current_plugins,
         registered_marketplaces=registered_marketplaces,
+        write_registry=write_registry,
     ).findings
 
 
@@ -255,6 +306,19 @@ def _read_installed_registry() -> str | None:  # pragma: no cover
     """The Claude installed-plugins registry text, or None when absent."""
     path = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
     return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
+def _write_installed_registry(text: str) -> str:  # pragma: no cover
+    """Atomically persist the repaired registry, or render the write failure."""
+    path = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+    temporary = path.with_name(f"{path.name}.livespec-ensure.tmp")
+    try:
+        _ = temporary.write_text(text, encoding="utf-8")
+        _ = temporary.replace(path)
+    except OSError as error:
+        temporary.unlink(missing_ok=True)
+        return f"could not restore other project orchestrator records: {error}"
+    return ""
 
 
 def _read_marketplace_registry() -> str | None:  # pragma: no cover
@@ -302,6 +366,7 @@ def main() -> int:  # pragma: no cover
         read_registry=_read_installed_registry,
         current_plugins=current,
         registered_marketplaces=registered,
+        write_registry=_write_installed_registry,
     )
     for notice in report.notices:
         _ = sys.stdout.write(f"ensure_plugins: {notice}\n")
