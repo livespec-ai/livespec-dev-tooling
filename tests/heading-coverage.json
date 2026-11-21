@@ -4649,5 +4649,13 @@
     "test": "TODO",
     "reason": "Spec-first (v256): a real test at the integration tier or above is owed for this heading, driving the committed incident commit hook (incident_hook_scope) over a real git diff of an expedited-repair commit against an attempt authority record carrying a maintainer-attested workflow path list: a listed path admitted, an unlisted second path refused naming the missing workflow-scoped authorization and the path, and a stale attestation refusing the listed path too. livespec-dev-tooling-jtuxzn owns it.",
     "work_item": "livespec-dev-tooling-jtuxzn"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: the incident fleet audit refuses readiness when an adopter's observer-dependent CI cannot reach the observer",
+    "test": "TODO",
+    "reason": "Spec-first (v259): a real test at the integration tier or above is owed for this heading, driving the incident fleet audit over an adopter whose incident-ci runs-on resolves to ubuntu-latest and whose check-red-green-replay step lacks LIVESPEC_INCIDENT_OBSERVER_CONNECT_ADDR: the ready list omits the adopter, the findings name the job, the label expression and the missing input, and incident enablement for that adopter refuses. livespec-dev-tooling-7jxppa owns it.",
+    "work_item": "livespec-dev-tooling-7jxppa"
   }
 ]
