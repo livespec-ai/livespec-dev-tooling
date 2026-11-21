@@ -122,6 +122,18 @@ tailscale_serve_retired_ports:
   - 32278
 
 # --- factory_budget_reconciler ---
+# THREE factory sandbox pods: legacy-coordinator-agent ruling 2026-11-22 (value-only
+# edit, via gate-job-resources on livespec-dev-tooling-ukoeah). FLEET SCOPE:
+# hp-xubuntu only; no other node's factory_pod_budget moves. GATES-FIRST read
+# (throughput-plans-coordinator): gates-hp-flavor has cpu nominal 0, so no gate Job runs
+# on hp and the gates queue is not constrained by hp. Derivation against the
+# 14.5 cpu / 27.2 GiB allocatable, with the 0.7 cpu / 0.7 GiB warm-uv-cache and
+# a 3 cpu / 7.45 GiB sandbox pod: cpu (14.5 - 0 - 0.7) / 3 = 4.6; memory
+# (27.2 - 0.6) / 7.45 = 3.57, so 3, and 3 x 7.45 + 0.6 = 22.95 GiB stays under
+# the 27.2 GiB allocatable (node-memory-budget.yaml). CONDITION and REVERT: as
+# below, revert to 2 if node CPU idle < 5% AND kubepods-besteffort.slice
+# cpu.pressure some avg60 > 30.
+#
 # Two factory sandbox pods: legacy-coordinator-agent ruling 245a3c34
 # (2026-11-12, via gate-job-resources on livespec-dev-tooling-ukoeah), on the
 # rule K stranded-capacity read. livespec-dev-tooling#4302 shrank hp's gate
@@ -146,7 +158,7 @@ tailscale_serve_retired_ports:
 # 2026-11-03. Memory binds first (7.6 GiB per pod against 27 GiB allocatable).
 # Judged on factory runs per hour, green rate and hp CI p95. Revert: 0 here and
 # FACTORY_NODE=false in the profile (see the profile's FACTORY TRIAL block).
-factory_pod_budget: 2
+factory_pod_budget: 3
 
 # --- k3s_config ---
 # system.slice's root-level CPU share against kubepods.slice (567 on this 16-CPU
