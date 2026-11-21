@@ -517,6 +517,38 @@
     and incident_observer_installation_name is not defined
   notify: Reload systemd for the incident observer units
 
+- name: Install the observer-owned incident-merge trigger service
+  # The timer has no PR argument. Its entry point reads the one protected arm
+  # record and starts only that parameterized runner after its label/check fence.
+  ansible.builtin.template:
+    src: livespec-incident-merge-trigger.service.j2
+    dest: "{{ incident_observer_merge_trigger_service_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: >-
+    not (incident_observer_scratch | bool)
+    and incident_observer_scratch_name is not defined
+    and incident_observer_target_branch | default('', true) | length == 0
+    and incident_observer_installation_name is not defined
+  notify: Reload systemd for the incident observer units
+
+- name: Install the observer-owned incident-merge trigger timer
+  ansible.builtin.template:
+    src: livespec-incident-merge-trigger.timer.j2
+    dest: "{{ incident_observer_merge_trigger_timer_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: >-
+    not (incident_observer_scratch | bool)
+    and incident_observer_scratch_name is not defined
+    and incident_observer_target_branch | default('', true) | length == 0
+    and incident_observer_installation_name is not defined
+  notify: Reload systemd for the incident observer units
+
 - name: Write each secret from the control node's projected environment
   # The exact bytes, no trailing newline: the service compares
   # `Bearer <bytes>` against the file's contents.
@@ -1001,6 +1033,14 @@
 - name: Keep the reference fetch timer enabled and running
   ansible.builtin.systemd_service:
     name: "{{ incident_observer_fetch_unit_name }}.timer"
+    enabled: true
+    state: started
+  become: true
+  when: not ansible_check_mode or incident_observer_unit_stat.stat.exists
+
+- name: Keep the observer-owned incident-merge trigger timer enabled and running
+  ansible.builtin.systemd_service:
+    name: livespec-incident-merge-trigger.timer
     enabled: true
     state: started
   become: true

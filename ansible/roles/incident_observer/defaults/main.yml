@@ -406,6 +406,9 @@ incident_observer_fetch_interval: 5min
 # the runner refuses by name unless that script, the serving interpreter and every ancestor
 # are root-owned and not group or other writable, and the apply checks the script first.
 incident_observer_merge_service_path: /etc/systemd/system/livespec-incident-merge@.service
+incident_observer_merge_trigger_service_path: /etc/systemd/system/livespec-incident-merge-trigger.service
+incident_observer_merge_trigger_timer_path: /etc/systemd/system/livespec-incident-merge-trigger.timer
+incident_observer_merge_trigger_interval: 1min
 incident_observer_merge_authority_script: "{{ incident_observer_reader_dir }}/{{ incident_observer_reader_script_relative }}"
 # The root merge unit's working directory: root-owned, holding only a copy of the repository's
 # committed .beads/config.yaml, because `bd` takes its tenant and Dolt host from the working

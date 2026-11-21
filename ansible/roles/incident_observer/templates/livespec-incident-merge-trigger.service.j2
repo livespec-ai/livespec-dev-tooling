@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+# The observer-owned timer route selects the PR only from its protected arm
+# record.  It never accepts an operator-supplied pull-request number.
+[Unit]
+Description=Start a green armed expedited incident-merge runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory={{ incident_observer_merge_workdir }}
+ExecStart={{ incident_observer_venv }}/bin/python -I -m livespec_dev_tooling.incident_merge_trigger --project-root {{ incident_observer_reference_dir }} --state-dir {{ incident_observer_state_dir }} --credential {{ incident_observer_merge_app_path }}
+Environment=OPENV_KEEP_PRIVILEGES=1
+Environment=SUDO_UID=0
+Environment=SUDO_GID=0
+Environment=SUDO_USER=root
+Environment=LIVESPEC_BD_PATH=/usr/local/bin/bd
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ReadWritePaths=-/root/.config/op

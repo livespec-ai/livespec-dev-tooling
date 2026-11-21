@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodically evaluate the observer's armed incident repair
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ incident_observer_merge_trigger_interval }}
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
