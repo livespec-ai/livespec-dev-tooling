@@ -112,6 +112,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
@@ -353,6 +354,24 @@ def _exits_zero(*, argv: list[str]) -> IOResult[bool, ForgeProbeUnavailable]:
     return _run(argv=argv).map(lambda completed: completed.returncode == 0)
 
 
+def _stop_gpg_daemons(*, home: str) -> None:
+    """Best-effort stop for every daemon attached to one private GNUPGHOME.
+
+    ``gpg`` starts an agent on demand, and can also start keyboxd or dirmngr.
+    Removing the directory alone leaves those processes behind with a now-dead
+    home, so ask gpgconf to stop every daemon before its owning temporary
+    directory exits.  Cleanup must never change the range check's verdict:
+    gpgconf may itself be unavailable or fail while shutting down.
+    """
+    with suppress(OSError):
+        _ = subprocess.run(
+            ["gpgconf", "--homedir", home, "--kill", "all"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
 def _and_then(
     *,
     probed: IOResult[_Probed, ForgeProbeUnavailable],
@@ -406,17 +425,22 @@ def _verifies_against_trust_root(
     track, which the composition below forwards without a branch of its own.
     """
     with tempfile.TemporaryDirectory(prefix="rgr-forge-trust-") as home:
-        env = {**os.environ, "GNUPGHOME": home}
-        return _and_then(
-            probed=_run(
-                argv=["gpg", "--batch", "--quiet", "--no-tty", "--import"],
-                env=env,
-                input_text=trust_root.public_key_block,
-            ),
-            decide=lambda keyring: _signed_by_trusted_key(sha=sha, env=env, trust_root=trust_root)
-            if keyring.returncode == 0
-            else IOSuccess(_NO_EXEMPTION),
-        )
+        try:
+            env = {**os.environ, "GNUPGHOME": home}
+            return _and_then(
+                probed=_run(
+                    argv=["gpg", "--batch", "--quiet", "--no-tty", "--import"],
+                    env=env,
+                    input_text=trust_root.public_key_block,
+                ),
+                decide=lambda keyring: _signed_by_trusted_key(
+                    sha=sha, env=env, trust_root=trust_root
+                )
+                if keyring.returncode == 0
+                else IOSuccess(_NO_EXEMPTION),
+            )
+        finally:
+            _stop_gpg_daemons(home=home)
 
 
 def _signed_by_trusted_key(
