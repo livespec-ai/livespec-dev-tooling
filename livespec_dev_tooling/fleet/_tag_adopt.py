@@ -90,8 +90,11 @@ def _clone_refusal(*, clone: Path, tag: str, host: TagAdoptHost) -> str:
     refusal = release_refusal(tag=tag, gh=host.gh) or enablement_refusal(clone=clone)
     refusal = refusal or session_hook_refusal(clone=clone)
     refusal = refusal or hold_probe_refusal(clone=clone, run=host.run)
-    registry = json_object(text=_registry_text(host=host))
-    return refusal or clone_record_refusal(registry=registry, clone=str(clone))
+    registry_text = _registry_text(host=host)
+    if registry_text is None:
+        return clone_record_refusal(registry={}, clone=str(clone))
+    registry = json_object(text=registry_text)
+    return refusal or clone_record_refusal(registry=registry, clone=str(clone), allow_missing=True)
 
 
 def _land(*, tag: str, commit: str, host: TagAdoptHost) -> LandedBuild:
@@ -135,7 +138,11 @@ def _moved(*, clone: Path, tag: str, host: TagAdoptHost) -> str:
         "lastUpdated": host.now(),
     }
     failure = write_record(
-        registry_path=registry_path, clone=str(clone), fields=fields, read_text=host.read_text
+        registry_path=registry_path,
+        clone=str(clone),
+        fields=fields,
+        read_text=host.read_text,
+        create_if_missing=True,
     )
     if failure:
         return failure

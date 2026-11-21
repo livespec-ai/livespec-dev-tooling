@@ -15,7 +15,6 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 # `returns` is VENDORED, not installed; this module reads both artifact seams'
 # railway tracks directly, so it establishes the path itself rather than
@@ -65,6 +64,14 @@ from livespec_dev_tooling.fleet._plugin_startup import (  # noqa: E402
     _logged_runner,
     _startup_currency,
 )
+from livespec_dev_tooling.fleet._registry_files import (  # noqa: E402
+    RegistryReader,
+    RegistryWriter,
+    read_installed_registry,
+    read_marketplace_registry,
+    reconciled_registry,
+    write_installed_registry,
+)
 
 __all__: list[str] = [
     "ArtifactReader",
@@ -74,6 +81,7 @@ __all__: list[str] = [
     "PluginCommandResult",
     "PluginCommandRunner",
     "RegistryReader",
+    "RegistryWriter",
     "ensure",
     "ensure_report",
     "main",
@@ -85,12 +93,6 @@ __all__: list[str] = [
     "settings_findings",
     "subprocess_runner",
 ]
-
-
-class RegistryReader(Protocol):
-    """Callable seam reading the installed-plugins registry, or None if absent."""
-
-    def __call__(self) -> str | None: ...
 
 
 def settings_findings(*, settings_text: str) -> tuple[str, ...]:
@@ -160,6 +162,7 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
     remove_cache_dir: CacheDirRemover = remove_plugin_cache_dir,
     current_plugins: frozenset[str] = frozenset(),
     registered_marketplaces: frozenset[str] = frozenset(),
+    write_registry: RegistryWriter | None = None,
 ) -> EnsureReport:
     """Provision from settings, then confirm it landed.
 
@@ -180,6 +183,7 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
         read_registry=read_registry,
         read_artifact=read_artifact,
     )
+    registry_before_commands = read_registry() if write_registry is not None else None
     notices = hold_notice(state=state, project_root=project_root)
     commands = planned_commands(settings_text=settings_text)
     if state.kind == STATE_HELD:
@@ -194,9 +198,17 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
         )
     )
     command_findings = _run_commands(commands=needed, runner=runner)
+    restore_finding, registry_text = reconciled_registry(
+        state_kind=state.kind,
+        project_root=project_root,
+        before_text=registry_before_commands,
+        read_registry=read_registry,
+        write_registry=write_registry,
+    )
+    if restore_finding:
+        return EnsureReport(findings=(*command_findings, restore_finding), notices=notices)
     if command_findings:
         return EnsureReport(findings=command_findings, notices=notices)
-    registry_text = read_registry()
     findings = registry_findings(
         settings_text=settings_text,
         project_root=project_root,
@@ -216,7 +228,15 @@ def ensure_report(  # noqa: PLR0913 — preserve existing I/O seams while adding
                     findings=(unsafe_perform_io(removal.failure()).finding,), notices=notices
                 )
         command_findings = _run_commands(commands=commands, runner=runner)
-        registry_text = read_registry()
+        restore_finding, registry_text = reconciled_registry(
+            state_kind=state.kind,
+            project_root=project_root,
+            before_text=registry_before_commands,
+            read_registry=read_registry,
+            write_registry=write_registry,
+        )
+        if restore_finding:
+            return EnsureReport(findings=(restore_finding,), notices=notices)
         findings = command_findings or registry_findings(
             settings_text=settings_text,
             project_root=project_root,
@@ -237,6 +257,7 @@ def ensure(  # noqa: PLR0913 — preserve existing I/O seams while adding proven
     remove_cache_dir: CacheDirRemover = remove_plugin_cache_dir,
     current_plugins: frozenset[str] = frozenset(),
     registered_marketplaces: frozenset[str] = frozenset(),
+    write_registry: RegistryWriter | None = None,
 ) -> tuple[str, ...]:
     """Provision from settings, then confirm it landed. Empty means provisioned."""
     return ensure_report(
@@ -248,21 +269,8 @@ def ensure(  # noqa: PLR0913 — preserve existing I/O seams while adding proven
         remove_cache_dir=remove_cache_dir,
         current_plugins=current_plugins,
         registered_marketplaces=registered_marketplaces,
+        write_registry=write_registry,
     ).findings
-
-
-def _read_installed_registry() -> str | None:  # pragma: no cover
-    """The Claude installed-plugins registry text, or None when absent."""
-    path = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
-    return path.read_text(encoding="utf-8") if path.is_file() else None
-
-
-def _read_marketplace_registry() -> str | None:  # pragma: no cover
-    path = Path.home() / ".claude/plugins/known_marketplaces.json"
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return None
 
 
 def main() -> int:  # pragma: no cover
@@ -281,7 +289,7 @@ def main() -> int:  # pragma: no cover
     if precondition:
         return 3
     origin_report = repair_marketplace_origins(
-        known_text=_read_marketplace_registry() or "{}",
+        known_text=read_marketplace_registry() or "{}",
         read_origin=git_origin,
         set_origin=git_set_origin,
     )
@@ -292,16 +300,17 @@ def main() -> int:  # pragma: no cover
     current, registered = _startup_currency(
         settings_text=settings_text,
         project_root=str(root),
-        registry_text=_read_installed_registry(),
-        marketplaces_text=_read_marketplace_registry(),
+        registry_text=read_installed_registry(),
+        marketplaces_text=read_marketplace_registry(),
     )
     report = ensure_report(
         settings_text=settings_text,
         project_root=str(root),
         runner=_logged_runner,
-        read_registry=_read_installed_registry,
+        read_registry=read_installed_registry,
         current_plugins=current,
         registered_marketplaces=registered,
+        write_registry=write_installed_registry,
     )
     for notice in report.notices:
         _ = sys.stdout.write(f"ensure_plugins: {notice}\n")
