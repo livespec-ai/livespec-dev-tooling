@@ -5913,6 +5913,22 @@ Then no hook installed by the role refuses the command
 
 And the managed `CLAUDE.md` that session loaded tells it to prefer `SendMessage` and that typing into a pane stays available when that is necessary
 
+## Scenario: a seat reads a message another seat sent it through the ledger mailbox without any pane typing
+
+Given two seats on different hosts that share the ledger, and a recipient seat with an installed mailbox read hook
+
+When the sender runs `mailbox send --to <recipient> --urgency normal <body>`
+
+Then the command prints a record id and the ledger holds one record addressed to the recipient
+
+And at the recipient's next turn boundary the hook injects that message into its context and stamps `read_at` and `read_by`
+
+And no text is typed into any pane, and a second read returns no message
+
+And when a message sent with `--urgency urgent` is still unread past the dwell, the poller writes a journal line, an alarm file and a ledger comment on the coordinator epic, once, and types nothing
+
+And when the sender runs the command while the ledger refuses writes, it exits non-zero and prints no record id
+
 ## Scenario: a memory file on an agent-seat host becomes one migration item in its owning repository
 
 Given the `fleet_memory_sweep` role is applied to the control node
