@@ -46,6 +46,7 @@ import ast
 import base64
 import functools
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -198,6 +199,37 @@ def _discard_signing_key(*, key: ForgeKey) -> None:
         check=False,
     )
     shutil.rmtree(key.home, ignore_errors=True)
+
+
+def test_new_signing_key_sweeps_a_forge_home_left_by_a_dead_creator(
+    *, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A new fixture run removes recorded forge homes a killed session left behind."""
+    stale_home = tmp_path / "rgr-forge-key-killed-session"
+    stale_home.mkdir()
+    (stale_home / ".rgr-forge-creator.json").write_text(
+        json.dumps({"pid": 999_999_999, "start_time": "0"}), encoding="utf-8"
+    )
+    new_home = tmp_path / "rgr-forge-key-new-session"
+
+    def fake_gpg(*, home: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+        del home
+        if "--with-colons" in args:
+            stdout = "fpr:::::::::TEST-FINGERPRINT:\n"
+        elif "--export" in args:
+            stdout = "fixture public key"
+        else:
+            stdout = ""
+        return subprocess.CompletedProcess(args=["gpg", *args], returncode=0, stdout=stdout)
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(tempfile, "mkdtemp", lambda **_: str(new_home))
+    monkeypatch.setitem(globals(), "_gpg", fake_gpg)
+
+    key = _new_signing_key(uid="Replacement Fixture <fixture@example.invalid>")
+
+    assert key.home == new_home
+    assert not stale_home.exists()
 
 
 @pytest.fixture(scope="session")
