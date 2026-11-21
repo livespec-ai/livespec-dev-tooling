@@ -30,6 +30,7 @@ _OTHER = "livespec@livespec"
 _ROOT = "/work/clone"
 _HELD_SHA = "a" * 40
 _NEW_SHA = "b" * 40
+_PRIMARY_SHA = "c" * 40
 _LAST_UPDATED = "2026-11-09T09:22:35.000Z"
 _ORCH_PATH = "/cache/orch-held"
 _ORCH_NEW_PATH = "/cache/orch-new"
@@ -71,11 +72,14 @@ class _Host:
         broken: frozenset[str] = frozenset(),
         unanswered: frozenset[str] = frozenset(),
         marketplace_exit: int = 0,
+        rewrites_primary_on_orchestrator_command: bool = False,
     ) -> None:
         self.orch = orch
         self.broken = broken
         self.unanswered = unanswered
         self.marketplace_exit = marketplace_exit
+        self.rewrites_primary_on_orchestrator_command = rewrites_primary_on_orchestrator_command
+        self.primary_sha = _PRIMARY_SHA
         self.other_path = _OTHER_PATH
         self.calls: list[tuple[str, ...]] = []
         self.removed: list[str] = []
@@ -86,6 +90,8 @@ class _Host:
             return IOSuccess(PluginCommandResult(returncode=self.marketplace_exit))
         if args[3] == _ORCH:
             self.orch = (_NEW_SHA, _ORCH_NEW_PATH)
+            if self.rewrites_primary_on_orchestrator_command:
+                self.primary_sha = _NEW_SHA
         elif _OTHER_PATH in self.removed:
             self.other_path = _OTHER_NEW_PATH
         return IOSuccess(PluginCommandResult(returncode=0))
@@ -96,7 +102,7 @@ class _Host:
                 "scope": "project",
                 "projectPath": "/work/primary",
                 "installPath": "/cache/orch-primary",
-                "gitCommitSha": "c" * 40,
+                "gitCommitSha": self.primary_sha,
             }
         ]
         if self.orch is not None:
@@ -190,6 +196,18 @@ def test_absent_install_in_a_linked_worktree_installs_the_offered_build() -> Non
     assert ("claude", "plugin", "install", _ORCH, "-s", "project") in host.calls
     assert report.findings == ()
     assert host.orch == (_NEW_SHA, _ORCH_NEW_PATH)
+
+
+def test_absent_linked_worktree_install_restores_a_primary_record_rewritten_by_claude() -> None:
+    """A worktree provision may create its own record but cannot move the primary's."""
+    host = _Host(orch=None, rewrites_primary_on_orchestrator_command=True)
+    primary_before = host.primary_sha
+
+    report = _run(host=host)
+
+    assert report.findings == ()
+    assert host.orch == (_NEW_SHA, _ORCH_NEW_PATH)
+    assert host.primary_sha == primary_before
 
 
 def test_absent_install_is_still_attempted_after_the_marketplace_fetch_failed() -> None:
