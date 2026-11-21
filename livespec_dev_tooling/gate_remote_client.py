@@ -86,6 +86,7 @@ from pathlib import Path
 
 from livespec_dev_tooling._gate_abandoned_job_record import abandon_gate_job, with_record_path
 from livespec_dev_tooling._gate_member_report import parse_member_report
+from livespec_dev_tooling._gate_queue_coverage import uncovered_requests
 from livespec_dev_tooling._gate_remote_failed_pod import FailedPod, read_failed_pod
 from livespec_dev_tooling._gate_wait_interrupt import (
     GateWaitInterruptedError,
@@ -253,6 +254,12 @@ def run_gate(
         if isinstance(tree, Failure):
             return Failure(tree.failure())
         tree_hash = tree.unwrap()
+    # BEFORE anything is pushed or created: a Job the queue can never admit is not
+    # a slow gate, it is the head of a StrictFIFO line. Nothing exists yet, so
+    # there is no ref to collect.
+    refused = uncovered_requests(request=request, runner=runner)
+    if refused is not None:
+        return Failure(refused)
     push_argv = [
         *_mirror_push(),
         # `--atomic` is what makes the two refs ONE FACT. The mirror is created
