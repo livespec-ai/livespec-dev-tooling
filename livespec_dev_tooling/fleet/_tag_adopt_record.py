@@ -54,13 +54,15 @@ def _orchestrator_records(*, registry: Mapping[str, object]) -> list[object]:
     return cast("list[object]", records) if isinstance(records, list) else []
 
 
-def clone_record_refusal(*, registry: Mapping[str, object], clone: str) -> str:
-    """Why the clone lacks exactly one project-scope orchestrator record, or ''."""
+def clone_record_refusal(
+    *, registry: Mapping[str, object], clone: str, allow_missing: bool = False
+) -> str:
+    """Why the clone lacks a usable project-scope orchestrator record, or ''."""
     count = sum(
         _is_clone_record(entry=entry, clone=clone)
         for entry in _orchestrator_records(registry=registry)
     )
-    if count == 1:
+    if count == 1 or (allow_missing and count == 0):
         return ""
     return (
         f"{clone} has {count} project-scope {ORCHESTRATOR_PLUGIN} install records, "
@@ -69,15 +71,27 @@ def clone_record_refusal(*, registry: Mapping[str, object], clone: str) -> str:
 
 
 def _rewritten(
-    *, registry: Mapping[str, object], clone: str, fields: Mapping[str, str]
+    *, registry: Mapping[str, object], clone: str, fields: Mapping[str, str], create: bool
 ) -> dict[str, object]:
     """The registry with only the clone's record carrying the new fields."""
-    updated = json.loads(json.dumps(registry))
-    records = _orchestrator_records(registry=updated)
+    updated = cast("dict[str, object]", json.loads(json.dumps(registry)))
+    plugins = updated.get("plugins")
+    if not isinstance(plugins, dict):
+        plugins = {}
+        updated["plugins"] = plugins
+    records = cast("dict[str, object]", plugins).get(ORCHESTRATOR_PLUGIN)
+    if not isinstance(records, list):
+        records = []
+        cast("dict[str, object]", plugins)[ORCHESTRATOR_PLUGIN] = records
+    records = cast("list[object]", records)
+    found = False
     for index, entry in enumerate(records):
         if _is_clone_record(entry=entry, clone=clone):
             records[index] = {**cast("dict[str, object]", entry), **fields}
-    return cast("dict[str, object]", updated)
+            found = True
+    if create and not found:
+        records.append({"scope": "project", "projectPath": clone, **fields})
+    return updated
 
 
 def _without_clone(*, registry: Mapping[str, object], clone: str) -> object:
@@ -97,17 +111,32 @@ def differs_only_in_clone(
 
 
 def write_record(
-    *, registry_path: Path, clone: str, fields: Mapping[str, str], read_text: Callable[[Path], str]
+    *,
+    registry_path: Path,
+    clone: str,
+    fields: Mapping[str, str],
+    read_text: Callable[[Path], str],
+    create_if_missing: bool = False,
 ) -> str:
     """Atomically rewrite only the clone's record; the empty string on success, else the cause."""
     temporary = registry_path.with_name(f"{registry_path.name}.livespec-adopt.tmp")
     text = read_text(registry_path)
     for _attempt in range(1 + MAX_REAPPLIES):
         registry = json_object(text=text)
-        refusal = clone_record_refusal(registry=registry, clone=clone)
+        refusal = clone_record_refusal(
+            registry=registry, clone=clone, allow_missing=create_if_missing
+        )
         if refusal:
             return refusal
-        payload = json.dumps(_rewritten(registry=registry, clone=clone, fields=fields), indent=2)
+        payload = json.dumps(
+            _rewritten(
+                registry=registry,
+                clone=clone,
+                fields=fields,
+                create=create_if_missing,
+            ),
+            indent=2,
+        )
         payload += "\n" if text.endswith("\n") else ""
         _ = temporary.write_text(payload, encoding="utf-8")
         current = read_text(registry_path)

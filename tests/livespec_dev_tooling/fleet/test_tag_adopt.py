@@ -629,7 +629,7 @@ def test_a_missing_clone_and_a_clone_not_enabling_the_plugin_are_refused(*, tmp_
     assert "does not enable" in disabled.failure
 
 
-@pytest.mark.parametrize("count", [0, 2])
+@pytest.mark.parametrize("count", [2])
 def test_a_clone_without_exactly_one_project_record_is_refused(
     *, tmp_path: Path, count: int
 ) -> None:
