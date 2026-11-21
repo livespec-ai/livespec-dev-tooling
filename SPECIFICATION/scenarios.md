@@ -4213,6 +4213,16 @@ And when the audit reads a serving version showing the member's independent cont
 And for a consumer whose controller row carries an implemented claim and whose controller serving version cannot be read, that row MUST still read unclassified and the findings MUST name the consumer and the missing controller serving-version evidence.
 ```
 
+## Scenario: a shared-surface claim cites another adopter's proving incident only where the shared build fully determines the surface
+
+Given an incident in one adopter whose authenticated record proves gate-readers release vX.Y.Z, with its incident item, normal factory proof and cumulative scope digest
+And a second consumer whose gate readers serve vX.Y.Z, with an `implemented` claim on a gate-reader surface that the audit's committed configuration records as fully determined by the shared build, citing that incident by its adopter repository, incident item and release build vX.Y.Z
+And an `implemented` claim of the same consumer on the `Focused test selection` surface, which reads that consumer's focused-selection scope, citing the same incident
+When the fleet audit runs
+Then the first row MUST read implemented
+And the second row MUST read unclassified, and the findings MUST name the consumer, the surface and the adopter configuration it reads
+And when the consumer's gate readers serve a later release, or the cited record proved another release, the first row MUST read unclassified, and the findings MUST name the cited release and the serving version read
+
 ## Scenario: the incident fleet audit command refuses enablement for a consumer without verified serving evidence
 
 ```gherkin

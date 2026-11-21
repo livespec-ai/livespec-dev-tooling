@@ -4657,5 +4657,13 @@
     "test": "TODO",
     "reason": "Spec-first (v259): a real test at the integration tier or above is owed for this heading, driving the incident fleet audit over an adopter whose incident-ci runs-on resolves to ubuntu-latest and whose check-red-green-replay step lacks LIVESPEC_INCIDENT_OBSERVER_CONNECT_ADDR: the ready list omits the adopter, the findings name the job, the label expression and the missing input, and incident enablement for that adopter refuses. livespec-dev-tooling-7jxppa owns it.",
     "work_item": "livespec-dev-tooling-7jxppa"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a shared-surface claim cites another adopter's proving incident only where the shared build fully determines the surface",
+    "test": "TODO",
+    "reason": "Spec-first (v260): a real test at the integration tier or above is owed for this heading, running the incident fleet audit over a consumer whose gate readers serve a release with an implemented claim citing another adopter's authenticated proving incident: a surface the audit's committed configuration records as fully determined reads implemented, a focused-selection surface that reads adopter configuration reads unclassified naming the configuration, and a later serving release or a cited record that proved another release reads unclassified naming both releases. livespec-dev-tooling-vkkhsj owns it.",
+    "work_item": "livespec-dev-tooling-vkkhsj"
   }
 ]
