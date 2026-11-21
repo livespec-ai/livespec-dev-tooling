@@ -64,14 +64,14 @@ def test_a_job_level_if_without_an_event_or_ref_token_is_not_event_bound(
     assert event_bound_jobs(source=_workflow(condition=condition)) == frozenset(), label
 
 
-def test_a_step_level_if_does_not_make_the_job_event_bound():
+def test_a_step_level_if_naming_no_event_does_not_make_the_job_event_bound():
     source = (
         "on: push\n"
         "jobs:\n"
         "  gated:\n"
         "    runs-on: ubuntu-latest\n"
         "    steps:\n"
-        "      - if: github.event_name == 'push'\n"
+        "      - if: always()\n"
         "        run: just check-x\n"
     )
     assert event_bound_jobs(source=source) == frozenset()
