@@ -86,7 +86,12 @@ _SUITE_GREEN_SPAN_NAME = "livespec.suite-green.outcome"
 
 
 def build_span_payload(
-    *, outcome: str, repository: str | None, tree_hash: str | None, job_name: str | None
+    *,
+    outcome: str,
+    repository: str | None,
+    tree_hash: str | None,
+    job_name: str | None,
+    stage: str | None = None,
 ) -> dict[str, object]:
     """Build the OTLP payload for EXACTLY ONE span describing one decided run.
 
@@ -104,6 +109,7 @@ def build_span_payload(
         ("livespec.gate.repository", repository),
         ("livespec.gate.tree_hash", tree_hash),
         ("livespec.gate.job_name", job_name),
+        ("livespec.gate.stage", stage),
     )
     now = str(time.time_ns())
     return {
@@ -161,14 +167,23 @@ def post_span(*, endpoint: str, payload: dict[str, object]) -> None:
 
 
 def emit_gate_outcome(
-    *, outcome: str, repository: str | None, tree_hash: str | None, job_name: str | None
+    *,
+    outcome: str,
+    repository: str | None,
+    tree_hash: str | None,
+    job_name: str | None,
+    stage: str | None = None,
 ) -> None:
     """Emit one delegated gate run's outcome event to the configured receiver."""
     endpoint = (os.environ.get(ENDPOINT_ENV) or "").strip() or DEFAULT_ENDPOINT
     post_span(
         endpoint=endpoint,
         payload=build_span_payload(
-            outcome=outcome, repository=repository, tree_hash=tree_hash, job_name=job_name
+            outcome=outcome,
+            repository=repository,
+            tree_hash=tree_hash,
+            job_name=job_name,
+            stage=stage,
         ),
     )
 

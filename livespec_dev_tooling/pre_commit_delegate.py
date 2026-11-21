@@ -23,6 +23,13 @@ from livespec_dev_tooling._pre_commit_delegate_evidence import (
 from livespec_dev_tooling._pre_push_evidence import clear_for_worktree
 from livespec_dev_tooling.config import ConfigParseError, load_delegated_pre_commit
 from livespec_dev_tooling.gate_credential import gates_kubeconfig_readable
+from livespec_dev_tooling.gate_outcome_telemetry import (
+    GATE_OUTCOME_FAILED_TREE,
+    GATE_OUTCOME_NO_VERDICT,
+    GATE_OUTCOME_PASSED,
+    _repository_name,
+    emit_gate_outcome,
+)
 from livespec_dev_tooling.gate_remote_delegate import gate_remote_request, resolve_renderer
 from livespec_dev_tooling.gate_remote_invocation import default_gate_command_runner
 from livespec_dev_tooling.gate_remote_verdict import (
@@ -51,6 +58,8 @@ class PreCommitVerdict:
     full_aggregate: bool = False
     members_passed: tuple[str, ...] | None = None
     host_unchanged: bool = False
+    delegated: bool = False
+    gate_outcome: str | None = None
 
 
 def run_pre_commit(*, repo_root: Path) -> PreCommitVerdict:
@@ -62,12 +71,19 @@ def run_pre_commit(*, repo_root: Path) -> PreCommitVerdict:
     if not enabled:
         return PreCommitVerdict(local=True, reason="delegated_pre_commit is not enabled")
     if not gates_kubeconfig_readable():
-        return PreCommitVerdict(local=True, reason="gates kubeconfig is not readable")
+        return PreCommitVerdict(
+            local=True,
+            reason="gates kubeconfig is not readable",
+            delegated=True,
+            gate_outcome=GATE_OUTCOME_NO_VERDICT,
+        )
     tree_hash = _staged_tree_hash(repo_root=repo_root)
     if not tree_hash:
         return PreCommitVerdict(
             local=True,
             reason="the staged tree could not be read, so the pre-commit aggregate gates locally",
+            delegated=True,
+            gate_outcome=GATE_OUTCOME_NO_VERDICT,
         )
     check_suite = _pre_commit_check_suite(repo_root=repo_root)
     if check_suite is None:
@@ -77,8 +93,13 @@ def run_pre_commit(*, repo_root: Path) -> PreCommitVerdict:
                 "the gate check suite could not be read, so the pre-commit aggregate gates locally"
             ),
             tree_hash=tree_hash,
+            delegated=True,
+            gate_outcome=GATE_OUTCOME_NO_VERDICT,
         )
-    return _run_remote(repo_root=repo_root, tree_hash=tree_hash, check_suite=check_suite)
+    return replace(
+        _run_remote(repo_root=repo_root, tree_hash=tree_hash, check_suite=check_suite),
+        delegated=True,
+    )
 
 
 def _staged_tree_hash(*, repo_root: Path) -> str:
@@ -173,6 +194,7 @@ def _unbuilt_verdict(*, refused: bool, detail: str, tree_hash: str) -> PreCommit
         ),
         tree_hash=tree_hash,
         exit_status=1 if refused else None,
+        gate_outcome=GATE_OUTCOME_NO_VERDICT,
     )
 
 
@@ -204,6 +226,7 @@ def _run_remote(
                 "gates locally"
             ),
             tree_hash=tree_hash,
+            gate_outcome=GATE_OUTCOME_NO_VERDICT,
         )
     request = replace(built.unwrap(), source_ref=source, capture_output=True)
     remote = run_gated_push(request=request, runner=default_gate_command_runner)
@@ -243,6 +266,7 @@ def _run_remote(
                 else passed_members(report=joined.member_verdicts)
             ),
             host_unchanged=host_unchanged,
+            gate_outcome=GATE_OUTCOME_PASSED,
         )
     if remote.state == GATE_FAILED:
         return PreCommitVerdict(
@@ -252,6 +276,7 @@ def _run_remote(
             tree_hash=tree_hash,
             exit_status=1,
             output_checksum=remote.output_checksum,
+            gate_outcome=GATE_OUTCOME_FAILED_TREE,
         )
     return PreCommitVerdict(
         local=True,
@@ -260,6 +285,7 @@ def _run_remote(
         ),
         job_name=remote.job_name,
         tree_hash=tree_hash,
+        gate_outcome=GATE_OUTCOME_NO_VERDICT,
     )
 
 
@@ -282,6 +308,17 @@ def main() -> int:
     clear_for_worktree(cwd=Path.cwd())
     verdict = run_pre_commit(repo_root=Path.cwd())
     log = structlog.get_logger("pre_commit_delegate")
+    if verdict.delegated or not verdict.local:
+        emit_gate_outcome(
+            outcome=(
+                verdict.gate_outcome
+                or (GATE_OUTCOME_NO_VERDICT if verdict.local else GATE_OUTCOME_PASSED)
+            ),
+            repository=_repository_name(cwd=str(Path.cwd())),
+            tree_hash=verdict.tree_hash,
+            job_name=verdict.job_name,
+            stage="pre-commit",
+        )
     if verdict.local:
         if verdict.reason != "delegated_pre_commit is not enabled":
             log.warning(
