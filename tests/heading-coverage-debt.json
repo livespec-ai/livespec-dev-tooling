@@ -1157,6 +1157,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: a shared-surface claim cites another adopter's proving incident only where the shared build fully determines the surface",
+    "work_item": "livespec-dev-tooling-vkkhsj",
+    "first_seen": "2026-11-21"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: a shipped script hands its Honeycomb key to curl without placing it in curl's argument vector",
     "work_item": "livespec-dev-tooling-d5k6qc",
     "first_seen": "2026-11-13"
