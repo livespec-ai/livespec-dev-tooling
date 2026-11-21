@@ -22,3 +22,10 @@
         msg: "control-node-role connection={{ ansible_connection }} machine-id={{ control_node_identity_found }}"
       changed_when: false
       tags: [control_node_identity]
+    # The 15-minute poll that applies merged CI-stack changes to the CI hosts
+    # (livespec-dev-tooling-ctete5). Imported as a task AFTER the identity task, not
+    # under `roles:` (which runs first), so the guard's refusal precedes any install.
+    - name: Install the CI converge trigger
+      ansible.builtin.import_role:
+        name: ci_converge_trigger
+      tags: [ci_converge_trigger]

@@ -1,0 +1,16 @@
+---
+# ci_converge_trigger: the 15-minute poll that applies merged CI-stack changes to
+# every CI host from the control-node role host (livespec-dev-tooling-ctete5). See
+# ../../../ci-runner/converge-trigger/apply-merged-ci-changes.sh and
+# plan/gate-job-resources/research/005-ctete5-converge-trigger-design.md. No
+# hostname appears here: ci-pool.yml's control-node play selects the machine by role.
+ci_converge_trigger_src_dir: "{{ role_path }}/../../../ci-runner/converge-trigger"
+ci_converge_trigger_lib_dir: /usr/local/lib/ci-converge-trigger
+ci_converge_trigger_unit_dir: /etc/systemd/system
+ci_converge_trigger_state_dir: /var/lib/ci-converge-trigger
+ci_converge_trigger_user: ubuntu
+ci_converge_trigger_files:
+  - apply-merged-ci-changes.sh
+ci_converge_trigger_units:
+  - ci-converge-trigger.service
+  - ci-converge-trigger.timer
