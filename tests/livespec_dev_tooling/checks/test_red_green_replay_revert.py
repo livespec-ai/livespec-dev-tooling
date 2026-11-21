@@ -55,9 +55,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from returns.io import IOFailure, IOResult
+from returns.io import IOFailure, IOResult, IOSuccess
 from returns.unsafe import unsafe_perform_io
 
+from livespec_dev_tooling.checks import _red_green_replay_revert as forge_revert
 from livespec_dev_tooling.checks._red_green_replay_revert import (
     GITHUB_FORGE_TRUST_ROOT,
     RANGE_MISSING_TRAILERS_HINT,
@@ -383,6 +384,43 @@ def test_unimportable_trust_root_material_grants_no_exemption(*, tmp_path: Path)
         ),
     )
     assert not _is_exempt(sha="HEAD", key=key)
+
+
+def test_trust_keyring_daemons_stop_before_the_temporary_home_is_removed(
+    *, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A gpg refusal still tears down every daemon using its private keyring."""
+    home = tmp_path / "rgr-forge-trust-test"
+    cleanup = ("gpgconf", "--homedir", str(home), "--kill", "all")
+    calls: list[tuple[str, ...]] = []
+
+    class TrackingTemporaryDirectory:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> str:
+            home.mkdir()
+            return str(home)
+
+        def __exit__(self, *_: object) -> None:
+            assert cleanup in calls
+
+    def refuse_import(**_: object) -> IOSuccess[subprocess.CompletedProcess[str]]:
+        return IOSuccess(subprocess.CompletedProcess(args=["gpg"], returncode=1))
+
+    def record_cleanup(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(argv))
+        return subprocess.CompletedProcess(args=argv, returncode=0)
+
+    monkeypatch.setattr(forge_revert.tempfile, "TemporaryDirectory", TrackingTemporaryDirectory)
+    monkeypatch.setattr(forge_revert, "_run", refuse_import)
+    monkeypatch.setattr(forge_revert.subprocess, "run", record_cleanup)
+
+    assert not unsafe_perform_io(
+        forge_revert._verifies_against_trust_root(  # noqa: SLF001 — private helper under test.
+            sha="HEAD", trust_root=GITHUB_FORGE_TRUST_ROOT
+        ).unwrap()
+    )
 
 
 def test_is_forge_authored_revert_declares_a_railway_return_annotation() -> None:
