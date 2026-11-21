@@ -58,6 +58,22 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.233.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.232.0...v1.233.0) (2026-11-21)
+
+
+### Features
+
+* **ansible:** committed stuck-object drill playbook for the cgb2l2 host proof (livespec-dev-tooling-cgb2l2) ([27ebfba](https://github.com/livespec-ai/livespec-dev-tooling/commit/27ebfba99ce31299b3234736fbf410f9c05f67ea))
+* detect stale adopter incident inventories ([00f02c3](https://github.com/livespec-ai/livespec-dev-tooling/commit/00f02c392550ab4f88ae7744ec67e7a12f2503fe))
+
+
+### Bug Fixes
+
+* a delegated suite-green replay uses the Job's worker count when the justfile exports a host-derived test_nprocs (livespec-dev-tooling-uasiff) ([54e5e2d](https://github.com/livespec-ai/livespec-dev-tooling/commit/54e5e2ddfc7ef43eb6ce8192d049686c30d9e166))
+* a fresh worktree gets a materialize-only route for a canary build and ensure-plugins no longer moves the primary clone's orchestrator install record (livespec-dev-tooling-kdstk4) ([dd9074b](https://github.com/livespec-ai/livespec-dev-tooling/commit/dd9074b8c8ae9b4386b2e43de3ace6752db2d030))
+* **ansible:** the stuck-object drill's factory pod declares tiny requests and limits so the factory quota admits it (livespec-dev-tooling-cgb2l2) ([900bd6a](https://github.com/livespec-ai/livespec-dev-tooling/commit/900bd6a06e63db713ab12c6f632c008bcba5c20c))
+* **incident-ci:** a job whose every step carries an event-naming if: renders its members conditional (livespec-dev-tooling-hf2x56) ([a923206](https://github.com/livespec-ai/livespec-dev-tooling/commit/a9232063c036f7a7c74ff32dd4e90ff87b2eb852))
+
 ## [1.232.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.231.2...v1.232.0) (2026-11-21)
 
 
