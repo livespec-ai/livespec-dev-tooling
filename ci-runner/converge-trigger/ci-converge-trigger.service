@@ -1,0 +1,12 @@
+# Applies merged CI-stack changes to every CI host (apply-merged-ci-changes.sh).
+# Installed by the ci_converge_trigger Ansible role on the control-node role host.
+[Unit]
+Description=Apply merged CI-stack changes to the CI hosts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@@USER@@
+EnvironmentFile=-/etc/default/ci-converge-trigger
+ExecStart=/usr/local/lib/ci-converge-trigger/apply-merged-ci-changes.sh

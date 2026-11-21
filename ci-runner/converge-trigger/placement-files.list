@@ -1,0 +1,7 @@
+# The placement subset (livespec-dev-tooling-vksuu2): a merged range that touches ONLY
+# these paths under ci-runner/ is applied with `--tags ci_placement`; anything else
+# is applied with `--tags ci_converge_unit`. This list MUST equal the `src` values of
+# ci_converge_unit_placement_files (a test pins it), prefixed with ci-runner/k3s/phase2/.
+ci-runner/k3s/phase2/arc/render-arch-overlay.sh
+ci-runner/k3s/phase2/workload-arch.conf
+ci-runner/k3s/phase2/arc/runner-node-preference.conf
