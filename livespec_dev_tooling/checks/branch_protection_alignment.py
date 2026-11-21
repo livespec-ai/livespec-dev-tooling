@@ -163,6 +163,7 @@ from livespec_dev_tooling.checks._effective_required_checks import (  # noqa: E4
 )
 from livespec_dev_tooling.checks._gate_context import (  # noqa: E402
     credential_skip_is_failure,
+    skip_unreadable_in_preview,
 )
 
 __all__: list[str] = []
@@ -405,6 +406,10 @@ def _unreadable_protection_exit_code(
     `fleet/_credential_preflight.py` already states for the conformance lane
     (R4.S6, livespec-dev-tooling-ul61).
     """
+    if skip_unreadable_in_preview(
+        warn=log.warning, member="check-branch-protection-alignment", env=env
+    ):
+        return 0
     if credential_skip_is_failure(env=env):
         log.error(
             "cannot read branch protection inside a delegated gate; "
