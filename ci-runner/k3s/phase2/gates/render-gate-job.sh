@@ -824,19 +824,25 @@ esac
 # in livespec-dev-tooling), so everything is written into the pod's own log.
 #
 # THE STACKS COME FROM INSIDE EACH PYTHON PROCESS. A `sitecustomize` placed
-# first on PYTHONPATH arms `faulthandler.dump_traceback_later(N, repeat=True)`
-# in every Python process the gate starts, writing to that process's own
-# `stack-<pid>.txt`. faulthandler's watchdog is a C thread that needs no GIL, so
-# it still dumps a process wedged with the GIL held, which a Python thread could
-# not. A process that lives less than N seconds never dumps. NOT pytest's own
-# `faulthandler_timeout`: pytest arms and CANCELS that same per-process timer
-# around every test, which would disarm this one. NOT py-spy: the gate image
-# carries none, and the container has no CAP_SYS_PTRACE.
+# first on PYTHONPATH registers `faulthandler.register(SIGUSR2)` in every Python
+# process the gate starts, appending to that process's own `stack-<pid>.txt`.
+# faulthandler's signal handler is C code that needs no GIL, so it still dumps a
+# process wedged with the GIL held, which a Python thread could not. NOT
+# `faulthandler.dump_traceback_later`: that arms a watchdog THREAD, and a
+# process that forks without exec (ansible's async_wrapper) leaves its child
+# holding the thread's lock with no thread to release it, so the child's exit
+# waits forever, keeps the parent's stdout pipe open, and a `subprocess.run`
+# around the playbook never returns (livespec-dev-tooling-oaf4vn: the power-off
+# playbook test timed out at 600 s only under this route). A signal handler
+# starts no thread. NOT pytest's own `faulthandler_timeout`: pytest arms and
+# cancels that same per-process timer around every test. NOT py-spy: the gate
+# image carries none, and the container has no CAP_SYS_PTRACE.
 #
-# Every N seconds a background loop prints the process tree and, for each live
-# Python process with a dump, its command line and its LATEST dump. The loop's
-# output goes to the container's stdout, beside the recipes' output and outside
-# the recipe log the member report is parsed from.
+# Every N seconds a background loop prints the process tree, truncates each live
+# Python process's dump file, sends that process SIGUSR2 and, a second later,
+# prints its command line and the fresh dump. The loop's output goes to the
+# container's stdout, beside the recipes' output and outside the recipe log the
+# member report is parsed from.
 gate_repro_block=""
 if [ -n "${repro_stack_interval}" ]; then
   case "${repro_stack_interval}" in
@@ -850,16 +856,17 @@ gate_repro_site=\"\$(mktemp -d /tmp/gate-repro-site.XXXXXX)\"
 cat > \"\${gate_repro_site}/sitecustomize.py\" <<'GATE_REPRO_SITE'
 import faulthandler
 import os
+import signal
 
 _directory = os.environ.get(\"GATE_REPRO_STACK_DIR\", \"\")
 _stream = None
 if _directory:
     try:
-        _stream = open(os.path.join(_directory, f\"stack-{os.getpid()}.txt\"), \"w\")
+        _stream = open(os.path.join(_directory, f\"stack-{os.getpid()}.txt\"), \"a\")
     except OSError:
         _stream = None
 if _stream is not None:
-    faulthandler.dump_traceback_later(${repro_stack_interval}, repeat=True, file=_stream)
+    faulthandler.register(signal.SIGUSR2, file=_stream, all_threads=True)
 GATE_REPRO_SITE
 export PYTHONPATH=\"\${gate_repro_site}\${PYTHONPATH:+:\${PYTHONPATH}}\"
 gate_repro_report() {
@@ -873,9 +880,20 @@ gate_repro_report() {
       rm -f \"\${stack}\"
       continue
     fi
+    # A process younger than two seconds may not have registered its handler yet,
+    # and SIGUSR2's default action ends the process.
+    age=\"\$(ps -o etimes= -p \"\${pid}\" 2>/dev/null | tr -d ' ')\"
+    [ -n \"\${age}\" ] && [ \"\${age}\" -ge 2 ] || continue
+    : > \"\${stack}\"
+    kill -USR2 \"\${pid}\" 2>/dev/null || true
+  done
+  sleep 1
+  for stack in \"\${GATE_REPRO_STACK_DIR}\"/stack-*.txt; do
     [ -s \"\${stack}\" ] || continue
+    pid=\"\${stack##*/stack-}\"
+    pid=\"\${pid%.txt}\"
     echo \":: gate-repro: python pid \${pid}: \$(tr '\\0\\n' '  ' < \"/proc/\${pid}/cmdline\" 2>/dev/null | cut -c1-400)\"
-    awk '/^Timeout \\(/ { start = NR } { line[NR] = \$0 } END { if (start) for (i = start; i <= NR; i++) print line[i] }' \"\${stack}\" || true
+    cat \"\${stack}\" || true
   done
 }
 ( set +e; while sleep ${repro_stack_interval}; do gate_repro_report; done ) &"

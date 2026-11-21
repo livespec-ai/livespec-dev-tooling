@@ -1524,12 +1524,13 @@ if "${RENDERER}" --repo-root "${SCRATCH}/repo-a" --tree-hash "${HASH_A}" "${OUR_
   else
     fail "--queue gates-repro-lq did not become the Job's only queue-name label"
   fi
-  if grep -qF 'faulthandler.dump_traceback_later(300, repeat=True, file=_stream)' "${out_repro}" && \
+  if grep -qF 'faulthandler.register(signal.SIGUSR2, file=_stream, all_threads=True)' "${out_repro}" && \
+     ! grep -qF 'dump_traceback_later' "${out_repro}" && \
      grep -qF 'export PYTHONPATH="${gate_repro_site}' "${out_repro}" && \
      grep -qF 'while sleep 300; do gate_repro_report; done' "${out_repro}"; then
-    pass "--repro-stack-interval 300 arms a 300 s stack dump in every Python process and a 300 s report loop"
+    pass "--repro-stack-interval 300 registers a SIGUSR2 stack dump in every Python process (no watchdog thread) and a 300 s report loop"
   else
-    fail "--repro-stack-interval 300 did not render the stack dump, the PYTHONPATH export and the report loop"
+    fail "--repro-stack-interval 300 did not render the signal dump, the PYTHONPATH export and the report loop, or still arms a watchdog thread"
   fi
   repro_script="${SCRATCH}/repro-gate-script.sh"
   if python3 - "${out_repro}" "${repro_script}" <<'GATE_SCRIPT' && bash -n "${repro_script}"; then
@@ -1548,6 +1549,47 @@ GATE_SCRIPT
     pass "the gate container's script with the diagnostics rendered parses as shell"
   else
     fail "the gate container's script with the diagnostics rendered does not parse as shell"
+  fi
+  # THE RENDERED sitecustomize, RUN (livespec-dev-tooling-oaf4vn). A thread-based
+  # dump armed in every Python process leaves a process that forks without exec
+  # and then exits (ansible's async_wrapper) with a child that never exits, which
+  # holds the parent's stdout pipe open forever.
+  site_dir="${SCRATCH}/repro-site"
+  stack_dir="${SCRATCH}/repro-stacks"
+  mkdir -p "${site_dir}" "${stack_dir}"
+  awk "/^cat > .*sitecustomize.py. <<'GATE_REPRO_SITE'/ { grab = 1; next } /^GATE_REPRO_SITE\$/ { grab = 0 } grab" \
+    "${repro_script}" > "${site_dir}/sitecustomize.py"
+  if [ -s "${site_dir}/sitecustomize.py" ] && python3 -m py_compile "${site_dir}/sitecustomize.py"; then
+    # `timeout` signals the whole process group, so a hung child that holds the
+    # pipe is killed with the shell and the test fails instead of blocking.
+    fork_out="$(PYTHONPATH="${site_dir}" GATE_REPRO_STACK_DIR="${stack_dir}" \
+      timeout -k 2 20 sh -c "python3 -c 'import os, sys; os.fork(); sys.exit(0)' | cat" >/dev/null 2>&1; echo "rc=$?")"
+    if [ "${fork_out}" = "rc=0" ]; then
+      pass "a Python process that forks and exits with sys.exit() under the rendered diagnostics ends and leaves its stdout pipe closed"
+    else
+      fail "a Python process that forks and exits under the rendered diagnostics hung or failed (${fork_out})"
+    fi
+    pkill -f 'os.fork(); sys.exit(0)' 2>/dev/null || true
+    PYTHONPATH="${site_dir}" GATE_REPRO_STACK_DIR="${stack_dir}" python3 -c 'import time; time.sleep(30)' &
+    sleeper=$!
+    sleep 1
+    sleeper_stack="${stack_dir}/stack-${sleeper}.txt"
+    if [ -e "${sleeper_stack}" ]; then
+      : > "${sleeper_stack}"
+      kill -USR2 "${sleeper}" 2>/dev/null || true
+      sleep 1
+      if grep -q 'most recent call first' "${sleeper_stack}"; then
+        pass "SIGUSR2 makes a Python process under the rendered diagnostics write its current stack to its own dump file"
+      else
+        fail "SIGUSR2 sent to a Python process under the rendered diagnostics wrote no stack"
+      fi
+    else
+      fail "a Python process under the rendered diagnostics created no stack-<pid>.txt"
+    fi
+    kill "${sleeper}" 2>/dev/null || true
+    wait "${sleeper}" 2>/dev/null || true
+  else
+    fail "the rendered sitecustomize could not be extracted from the gate script"
   fi
 else
   fail "a render with --queue gates-repro-lq --repro-stack-interval 300 was refused: $(cat "${SCRATCH}/repro.err")"
