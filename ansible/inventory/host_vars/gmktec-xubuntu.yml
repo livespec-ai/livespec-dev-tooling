@@ -309,8 +309,18 @@ fabro_server_instances:
     # ~10:00Z). ROLLBACK: v0393-bbe693847/fabro and
     # 1529aa9f86b5bf346ae20a731bdf1cb433bc678825c8a43d0c21f513dac0ab1f, still staged
     # on gmktec-xubuntu.
-    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-d22808f8e/fabro
-    binary_sha256: f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015
+    # 2026-11-21: bee5378f9 (fabro 0.408.0-nightly.0) stops the Kubernetes sandbox
+    # leak (livespec-orchestrator-beads-fabro bd-ib-g6dkdt, plan
+    # kubernetes-sandbox-backend): a sandbox read of a terminal run answers from
+    # stored state and leaves the sandbox stopped (fork PR #42, bd-ib-hnttv5), and
+    # every ended run's sandbox is stopped, at worker exit and by a startup sweep
+    # (fork PR #43, bd-ib-lupvil). Branch carrier-v0.408-d22808f8e-leakfix-20261120 is d22808f8e plus ONLY
+    # those two fixes (no lost-sandbox resume, bd-ib-gngz5d). Built on fabro-k3s by carrier-build run
+    # 44898187765. Not yet live-proven here: the canary (:32278) is applied and
+    # re-proved first. ROLLBACK: v0408-d22808f8e/fabro and
+    # f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015, staged on the control node.
+    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-bee5378f9/fabro
+    binary_sha256: aa594e2c7f244eff64ae0fb83eed4026e6bfd77db5a6e7abf70a8fa5185cf019
     # On this engine the catalog, not the workflow table, decides the image.
     # The orchestrator workflow
     # (.claude-plugin/.fabro/workflows/implement-work-item/workflow.toml) pins
@@ -656,8 +666,17 @@ fabro_server_instances:
     # kubernetes-sandbox-backend's lost-sandbox re-drill; the other instances stay
     # on d22808f8e. ROLLBACK: v0408-d22808f8e/fabro and
     # f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015.
-    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-c04730194/fabro
-    binary_sha256: 22e4723a2c6448793a6f0c485cca1a0158d4562068bf0dc38278ae7984bd55d2
+    # 2026-11-21: c0a08dad1 (fabro 0.408.0-nightly.0) stops the Kubernetes sandbox
+    # leak (livespec-orchestrator-beads-fabro bd-ib-g6dkdt, plan
+    # kubernetes-sandbox-backend): a sandbox read of a terminal run answers from
+    # stored state and leaves the sandbox stopped (fork PR #42, bd-ib-hnttv5), and
+    # every ended run's sandbox is stopped, at worker exit and by a startup sweep
+    # (fork PR #43, bd-ib-lupvil). Carrier head: c04730194 (the lost-sandbox resume) plus those two fixes. Built on fabro-k3s by carrier-build run
+    # 44898185769. Not yet live-proven here: the canary (:32278) is applied and
+    # re-proved first. ROLLBACK: v0408-c04730194/fabro and
+    # 22e4723a2c6448793a6f0c485cca1a0158d4562068bf0dc38278ae7984bd55d2, staged on the control node.
+    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-c0a08dad1/fabro
+    binary_sha256: 736f1cc726386fb0182e4e82f2acda7e4861c87acd51fe441c718ba16679baf4
     # The fleet instance's catalog, entry for entry; the reasons for each
     # entry are given there. Bump the images together with it.
     # The three python entries on the `kubernetes` provider take the fleet's
@@ -867,8 +886,18 @@ fabro_server_instances:
     # ~10:00Z). ROLLBACK: v0393-bbe693847/fabro and
     # 1529aa9f86b5bf346ae20a731bdf1cb433bc678825c8a43d0c21f513dac0ab1f, still staged
     # on gmktec-xubuntu.
-    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-d22808f8e/fabro
-    binary_sha256: f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015
+    # 2026-11-21: bee5378f9 (fabro 0.408.0-nightly.0) stops the Kubernetes sandbox
+    # leak (livespec-orchestrator-beads-fabro bd-ib-g6dkdt, plan
+    # kubernetes-sandbox-backend): a sandbox read of a terminal run answers from
+    # stored state and leaves the sandbox stopped (fork PR #42, bd-ib-hnttv5), and
+    # every ended run's sandbox is stopped, at worker exit and by a startup sweep
+    # (fork PR #43, bd-ib-lupvil). Branch carrier-v0.408-d22808f8e-leakfix-20261120 is d22808f8e plus ONLY
+    # those two fixes (no lost-sandbox resume, bd-ib-gngz5d). Built on fabro-k3s by carrier-build run
+    # 44898187765. Not yet live-proven here: the canary (:32278) is applied and
+    # re-proved first. ROLLBACK: v0408-d22808f8e/fabro and
+    # f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015, staged on the control node.
+    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-bee5378f9/fabro
+    binary_sha256: aa594e2c7f244eff64ae0fb83eed4026e6bfd77db5a6e7abf70a8fa5185cf019
     environments:
       - id: factory-python
         cpu: 4
@@ -992,8 +1021,18 @@ fabro_server_instances:
     # ~10:00Z). ROLLBACK: v0393-bbe693847/fabro and
     # 1529aa9f86b5bf346ae20a731bdf1cb433bc678825c8a43d0c21f513dac0ab1f, still staged
     # on gmktec-xubuntu.
-    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-d22808f8e/fabro
-    binary_sha256: f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015
+    # 2026-11-21: bee5378f9 (fabro 0.408.0-nightly.0) stops the Kubernetes sandbox
+    # leak (livespec-orchestrator-beads-fabro bd-ib-g6dkdt, plan
+    # kubernetes-sandbox-backend): a sandbox read of a terminal run answers from
+    # stored state and leaves the sandbox stopped (fork PR #42, bd-ib-hnttv5), and
+    # every ended run's sandbox is stopped, at worker exit and by a startup sweep
+    # (fork PR #43, bd-ib-lupvil). Branch carrier-v0.408-d22808f8e-leakfix-20261120 is d22808f8e plus ONLY
+    # those two fixes (no lost-sandbox resume, bd-ib-gngz5d). Built on fabro-k3s by carrier-build run
+    # 44898187765. Not yet live-proven here: the canary (:32278) is applied and
+    # re-proved first. ROLLBACK: v0408-d22808f8e/fabro and
+    # f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015, staged on the control node.
+    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-bee5378f9/fabro
+    binary_sha256: aa594e2c7f244eff64ae0fb83eed4026e6bfd77db5a6e7abf70a8fa5185cf019
     # The tag FOLLOWS homelab's own workflow pin
     # (.fabro/workflows/implement-work-item/workflow.toml in mi-homelab/homelab,
     # python-agent-v1.126.0), not the orchestrator's; bump the two together.
