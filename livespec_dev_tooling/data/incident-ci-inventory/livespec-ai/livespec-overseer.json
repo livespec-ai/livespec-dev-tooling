@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": {
-    "commit": "d13d662b3d4fa6fd793afad995dd754d87a76db7",
+    "commit": "1cbe6ef4283449ee57e8091ea965203547400ffa",
     "repository": "livespec-ai/livespec-overseer"
   },
   "targets": [
@@ -466,6 +466,14 @@
       "classification": "fast",
       "consumes": [],
       "name": "check-marketplace-ref-release-only",
+      "needs": [],
+      "produces": []
+    },
+    {
+      "batch": "check-metadata-batch",
+      "classification": "fast",
+      "consumes": [],
+      "name": "check-no-ambient-environment-loops",
       "needs": [],
       "produces": []
     },

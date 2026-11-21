@@ -1,0 +1,32 @@
+# release-lane-watch.yml — this repository's shim onto the shared release-lane
+# watcher (livespec-dev-tooling-m4mm6g).
+#
+# Delegates to reusable-release-lane-watch.yml, which surveys each named lane and
+# reconciles ONE durable `release-lane-red` issue for this repository: opened or
+# updated while a lane is failing or unmeasurable, closed on recovery. That issue
+# is READ by needs-attention Signal 9 Shape C, so the durable signal is the issue,
+# not the scheduled run.
+#
+# WATCHED SET: incident-ci-inventory-freshness.yml, the daily read that fails
+# while any committed adopter incident CI inventory is stale. The watcher reports
+# a lane only after two consecutive failures, so one flake never opens the issue.
+#
+# NO `secrets: inherit`: the watcher runs on github.token with actions:read (lane
+# history) and issues:write (the durable issue) and needs no App secrets.
+
+name: Release lane watch
+
+on:
+  schedule:
+    - cron: '23 8 * * *'  # 08:23 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  watch:
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: livespec-ai/livespec-dev-tooling/.github/workflows/reusable-release-lane-watch.yml@v1.232.0
+    with:
+      workflows: "incident-ci-inventory-freshness.yml"

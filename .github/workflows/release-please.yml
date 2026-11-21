@@ -102,6 +102,27 @@ jobs:
           min-core-remaining: "500"
           min-graphql-remaining: "200"
 
+      # Refuse to open or update a release PR while a committed adopter incident
+      # CI inventory is stale (livespec-dev-tooling-m4mm6g, from hhxmgv). Only the
+      # schedule / workflow_dispatch pass is gated: the push-to-master pass merely
+      # TAGS a release PR that already merged, and refusing that would strand a
+      # release whose content was already accepted. The read clones each adopter's
+      # default branch and compares a fresh render with the committed entry, so it
+      # needs uv (pinned as in reusable-incident-ci-publish.yml) and the checkout
+      # above. It names the repository, recorded source commit, current head and
+      # each added, removed or reclassified member of every stale entry.
+      - name: Install the pinned uv via mise
+        if: github.event_name != 'push'
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          mise_toml: |
+            [tools]
+            uv = "0.9.26"
+
+      - name: Refuse the release while an adopter incident CI inventory is stale
+        if: github.event_name != 'push'
+        run: bash scripts/just/check-incident-ci-inventory-freshness.sh
+
       - name: Run release-please
         uses: googleapis/release-please-action@v5
         with:

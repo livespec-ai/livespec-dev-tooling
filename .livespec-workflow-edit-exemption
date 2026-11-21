@@ -1,3 +1,4 @@
-work_item=livespec-dev-tooling-2chu3g
-reason=The check-red-green-replay leg receives the incident observer env on a merge_group run too, only when merge-group-guard reports every queue entry same-repository and allowlisted, so an incident commit can pass the merge queue. Logically additive per the coordinator ruling recorded on the item: the leg runs on more events and no gate is removed or reduced. Three env lines re-expressed, comment reworded.
+work_item=livespec-dev-tooling-m4mm6g
+reason=Wires the existing incident CI inventory freshness read into the release path (a gate step on the scheduled and dispatched release-please pass) and a daily scheduled workflow whose failure the shared release-lane watcher reports through the durable release-lane-red issue. Two new workflow files and one inserted step; no existing line is deleted or modified, and the step measures under 10 s cold.
+change=additive
 ci_runtime=no-significant-increase

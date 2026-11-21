@@ -1,0 +1,47 @@
+# incident-ci-inventory-freshness.yml — scheduled freshness read of the released
+# adopter incident CI inventories (livespec-dev-tooling-m4mm6g, from hhxmgv).
+#
+# Each committed entry under livespec_dev_tooling/data/incident-ci-inventory/ is
+# rendered from an adopter's ci.yml and check-targets.txt at a recorded
+# default-branch commit. When the adopter's default branch moves on (a target
+# added, removed or renamed, an incident-timing annotation changed), the entry
+# goes stale and an expedited pull request there runs a stale member selection.
+# This job re-reads every entry against its adopter's current head and FAILS
+# while any entry differs, naming the repository, its recorded source commit, its
+# current head and each added, removed or reclassified member.
+#
+# WHERE THE REPORT GOES. A red scheduled run is read by nobody. The durable
+# signal is the `release-lane-red` issue that release-lane-watch.yml (this
+# repository's shim onto reusable-release-lane-watch.yml) keeps open while this
+# workflow is failing; needs-attention Signal 9 Shape C reads that issue.
+#
+# The same read gates the release PR in release-please.yml, so an entry that goes
+# stale between two scheduled runs still cannot ship.
+
+name: Incident CI inventory freshness
+
+on:
+  schedule:
+    - cron: '17 6 * * *'  # 06:17 UTC daily, ahead of release-lane-watch at 08:23
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install the pinned uv via mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
+        with:
+          mise_toml: |
+            [tools]
+            uv = "0.9.26"
+
+      - name: Compare every committed adopter inventory with its adopter's current head
+        run: bash scripts/just/check-incident-ci-inventory-freshness.sh

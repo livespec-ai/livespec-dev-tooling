@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source": {
-    "commit": "a0eef7f62c5a120b1e7a3e6f408d24332e904e0b",
+    "commit": "8c260b66d8bdcb123e5074f88c401a3175f72f54",
     "repository": "livespec-ai/livespec-orchestrator-beads-fabro"
   },
   "targets": [
@@ -525,6 +525,14 @@
       "classification": "fast",
       "consumes": [],
       "name": "check-needs-attention-surface-ownership",
+      "needs": [],
+      "produces": []
+    },
+    {
+      "batch": "check-metadata-batch",
+      "classification": "fast",
+      "consumes": [],
+      "name": "check-no-ambient-environment-loops",
       "needs": [],
       "produces": []
     },
