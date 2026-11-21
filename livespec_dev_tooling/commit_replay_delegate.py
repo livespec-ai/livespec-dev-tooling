@@ -128,10 +128,14 @@ def _delegated_suite_pytest_argv(
 
 def _delegated_suite_worker_count(*, repo_root: Path) -> str:
     """Return the delegated suite's effective xdist count, when it can be read."""
+    parallelism = os.environ.get(_PARALLELISM_ENV, "").strip()
+    # The justfile exports `test_nprocs` on every run, derived from the committing
+    # host's CPUs when no override is set, so it is explicit only beside an
+    # explicit LIVESPEC_TEST_PARALLELISM (uasiff: a 64-CPU host's 16 OOMed the Job).
     explicit_counts = (
-        os.environ.get(_TEST_NPROCS_ENV, "").strip(),
+        os.environ.get(_TEST_NPROCS_ENV, "").strip() if parallelism else "",
         "auto" if os.environ.get(_CI_LANE_ENV, "local") == "hosted" else "",
-        os.environ.get(_PARALLELISM_ENV, "").strip(),
+        parallelism,
     )
     if explicit := next((count for count in explicit_counts if count), None):
         return explicit
