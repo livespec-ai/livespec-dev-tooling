@@ -1598,6 +1598,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: an ordinary gate Job renders onto the one gate queue, and the per-node reproduction route admits only through an armed node flavor",
+    "work_item": "livespec-dev-tooling-nkocp5",
+    "first_seen": "2026-11-21"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: an unclaimed revert is released as soon as its own CI is green",
     "work_item": "livespec-dev-tooling-zcp5vb",
     "first_seen": "2026-10-22"

@@ -4665,5 +4665,13 @@
     "test": "TODO",
     "reason": "Spec-first (v260): a real test at the integration tier or above is owed for this heading, running the incident fleet audit over a consumer whose gate readers serve a release with an implemented claim citing another adopter's authenticated proving incident: a surface the audit's committed configuration records as fully determined reads implemented, a focused-selection surface that reads adopter configuration reads unclassified naming the configuration, and a later serving release or a cited record that proved another release reads unclassified naming both releases. livespec-dev-tooling-vkkhsj owns it.",
     "work_item": "livespec-dev-tooling-vkkhsj"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: an ordinary gate Job renders onto the one gate queue, and the per-node reproduction route admits only through an armed node flavor",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the committed renderer and the committed gates-repro-cq ClusterQueue and the converge's flavor deletes; livespec-dev-tooling-nkocp5 owns it (it replaces the closed livespec-dev-tooling-caq7uh).",
+    "work_item": "livespec-dev-tooling-nkocp5"
   }
 ]

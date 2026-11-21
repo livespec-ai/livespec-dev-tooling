@@ -6503,3 +6503,14 @@ And when the same commit also changes a second workflow file that the list does 
 
 And when the attestation is not current for the attempt generation the commit binds, the hook refuses the listed path too
 ```
+
+## Scenario: an ordinary gate Job renders onto the one gate queue, and the per-node reproduction route admits only through an armed node flavor
+
+```gherkin
+Given the committed gate Job renderer ci-runner/k3s/phase2/gates/render-gate-job.sh and the committed gates-repro-cq ClusterQueue
+When the renderer renders a gate Job manifest from valid arguments and no --queue
+Then the manifest's kueue.x-k8s.io/queue-name label MUST be gates-lq.
+And the renderer invoked with --queue gates-repro-lq and --node gmktec-xubuntu MUST render a Job whose queue-name label is gates-repro-lq and whose nodeSelector requires kubernetes.io/hostname gmktec-xubuntu.
+And the gates-repro-cq ClusterQueue MUST list a ResourceFlavor for gmktec-xubuntu and one for poweredge-xubuntu, and MUST list none for gamingpc-xubuntu or hp-xubuntu.
+And a converge run MUST leave neither the gates-repro-gamingpc-flavor nor the gates-repro-hp-flavor ResourceFlavor on the cluster, and a second run MUST NOT fail on their absence.
+```
