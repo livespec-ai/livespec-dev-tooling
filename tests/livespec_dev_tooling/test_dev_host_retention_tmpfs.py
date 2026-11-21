@@ -159,6 +159,7 @@ def test_scratch_only_retention_removes_dead_scratch_and_fires_every_two_hours(
     assert "free space before:" in done.stdout and "free space after:" in done.stdout, done.stdout
 
     timer = _SCRATCH_ONLY_TIMER.read_text(encoding="utf-8")
+    assert "OnBootSec=2min" in timer
     assert "OnUnitActiveSec={{ dev_host_retention_scratch_on_unit_active_sec }}" in timer
     assert "Unit={{ dev_host_retention_scratch_service }}" in timer
     defaults = (_ROLE / "defaults" / "main.yml").read_text(encoding="utf-8")
