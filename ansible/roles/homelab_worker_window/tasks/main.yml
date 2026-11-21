@@ -49,6 +49,7 @@
                    if homelab_worker_window_kubeconfig | length > 0 else {})
          | combine({'WINDOW_NODE_CONFIRM': homelab_worker_window_node,
                     'WINDOW_STATE_DIR': homelab_worker_window_state_dir,
+                    'WINDOW_FORCE_ARCHIVE': homelab_worker_window_force_archive,
                     'WINDOW_BOUND_SECONDS': homelab_worker_window_bound_seconds | string,
                     'WINDOW_API_SERVER': homelab_worker_window_api_server,
                     'WINDOW_SERVER_CA': homelab_worker_window_state_dir ~ '/server-ca.crt'}) }}
