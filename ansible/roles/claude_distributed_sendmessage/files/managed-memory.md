@@ -10,7 +10,7 @@ Prefer SendMessage over typing a message into another session's terminal pane
 (`herdr pane send-text`, `herdr pane run`, `herdr agent prompt`, `tmux
 send-keys`): typed text lands in the line the maintainer may be typing into.
 Typing into a pane is still ALLOWED and nothing blocks it. Use it when it is
-the right tool: a slash command such as `/remote-control`, answering a picker,
+the right tool: a slash command such as `/reload-plugins`, answering a picker,
 a session SendMessage cannot reach, or a Codex or pi seat. Check the pane is
 idle first, and keep it short.
 
