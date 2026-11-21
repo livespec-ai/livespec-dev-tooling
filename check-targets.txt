@@ -4,6 +4,7 @@ check-aggregate-completeness  # incident-timing: fast
 check-all-declared  # incident-timing: fast
 check-assert-never-exhaustiveness  # incident-timing: fast
 check-branch-protection-alignment  # incident-timing: fast
+check-capacity-change-derivation  # incident-timing: fast
 check-canonical-recipe-fidelity  # incident-timing: fast
 check-check-coverage-incremental  # incident-timing: fast
 check-check-mutation  # incident-timing: fast

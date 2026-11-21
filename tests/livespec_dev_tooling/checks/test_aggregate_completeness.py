@@ -168,6 +168,11 @@ def test_real_check_recipe_is_legacy_readable_exact_inventory_mirror() -> None:
     wired = _legacy_core_v1_17_1_extract_check_slugs(justfile_text=justfile_text)
 
     assert wired == _normalized_real_target_inventory()
+    # 92 since livespec-dev-tooling-rl2dqp added the canonical
+    # `check-capacity-change-derivation`, which mechanically requires a
+    # post-ratification capacity, quota, or lane change to carry the CI-side
+    # read and measured revert trigger the derivation records.
+    #
     # 91 since livespec-dev-tooling-d2ysfg added the repo-private
     # `check-ansible-recipes-load-config`, which runs the root-level drift and
     # apply recipes and confirms their pinned ansible-core loads the provisioning
@@ -233,7 +238,7 @@ def test_real_check_recipe_is_legacy_readable_exact_inventory_mirror() -> None:
     # stays EXACT rather than becoming a `>=`: its job is to make any change to
     # the inventory a deliberate edit here, and a lower bound would let a silent
     # drop through.
-    assert wired is not None and len(wired) == 91
+    assert wired is not None and len(wired) == 92
     canonical = unsafe_perform_io(canonical_check_slugs().unwrap())
     assert not set(canonical).difference(wired)
     assert _legacy_core_v1_17_1_extract_check_slugs(justfile_text="default:\n    true\n") is None

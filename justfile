@@ -284,6 +284,7 @@ check:
         check-all-declared
         check-assert-never-exhaustiveness
         check-branch-protection-alignment
+        check-capacity-change-derivation
         check-canonical-recipe-fidelity
         check-check-coverage-incremental
         check-check-mutation
@@ -910,6 +911,9 @@ check-check-coverage-incremental *args:
 # `true`) → the mutmut suite runs. No external gate, no silent skip.
 check-check-mutation:
     uv run python -m livespec_dev_tooling.checks.check_mutation
+
+check-capacity-change-derivation:
+    uv run python -m livespec_dev_tooling.checks.capacity_change_derivation
 
 check-check-tools:
     uv run python -m livespec_dev_tooling.checks.check_tools
