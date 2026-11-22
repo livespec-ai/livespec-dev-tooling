@@ -1,0 +1,18 @@
+---
+# Keep the stopgap pr-throughput emitter loop running on the host that runs it,
+# as a systemd user unit that restarts on failure and survives a reboot (plan
+# throughput-metric, work item livespec-dev-tooling-h3b3ca). The loop script and
+# emit.py are NOT shipped here: they stay in the account's ~/.local/share, and
+# livespec-dev-tooling-gaetnq's committed reconciler replaces the whole stopgap.
+#
+#   just ansible-drift ansible/pr-throughput-emitter.yml
+#   just ansible-apply ansible/pr-throughput-emitter.yml
+#
+# ROLLBACK: set pr_throughput_emitter_state to absent in a committed change and
+# re-apply (role defaults say what it removes and what it leaves alone).
+- name: The pr-throughput emitter user unit
+  hosts: pr_throughput_emitter_hosts
+  gather_facts: true
+  roles:
+    - role: pr_throughput_emitter
+      tags: [pr_throughput_emitter]

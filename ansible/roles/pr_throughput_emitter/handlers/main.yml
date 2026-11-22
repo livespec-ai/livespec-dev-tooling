@@ -1,0 +1,7 @@
+---
+- name: Reload the user systemd manager for the pr-throughput emitter
+  ansible.builtin.systemd_service:
+    scope: user
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"

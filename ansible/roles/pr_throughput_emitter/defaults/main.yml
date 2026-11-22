@@ -1,0 +1,18 @@
+---
+# pr_throughput_emitter: keeps the STOPGAP pr-throughput emitter loop alive on the
+# host that runs it, as a systemd USER unit (plan throughput-metric,
+# livespec-dev-tooling-h3b3ca). The loop was a detached process, then a transient
+# unit, and every reboot of the host killed it. The loop script and emit.py stay
+# where they are, outside this repository: livespec-dev-tooling-gaetnq's committed
+# reconciler replaces them, and this role is removed then.
+pr_throughput_emitter_unit: pr-throughput-emit-loop.service
+pr_throughput_emitter_script: "{{ ansible_facts['user_dir'] }}/.local/share/pr-throughput/bin/emit-loop.sh"
+pr_throughput_emitter_unit_dir: "{{ ansible_facts['user_dir'] }}/.config/systemd/user"
+pr_throughput_emitter_retired_file: "{{ ansible_facts['user_dir'] }}/.local/state/pr-throughput/RETIRED"
+
+# The committed off-switch. `present` installs, enables and starts the unit.
+# `absent` stops and disables it, removes the unit file and reloads the user
+# manager, and leaves the loop script, emit.py and their state alone. To roll
+# back, set it in a committed change (a group_vars line or a revert flipping this
+# default) and re-apply: just ansible-apply ansible/pr-throughput-emitter.yml
+pr_throughput_emitter_state: present
