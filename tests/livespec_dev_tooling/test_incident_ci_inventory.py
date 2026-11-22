@@ -220,7 +220,6 @@ def test_load_inventory_reads_only_packaged_bytes_through_strict_validation(monk
     assert [t.name for t in module.load_inventory()] == ["check-fast"]
 
 
-# EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-z5cjph
 _ADOPTER = "owner/adopter"
 _ADOPTER_COMMIT = "c" * 40
 
