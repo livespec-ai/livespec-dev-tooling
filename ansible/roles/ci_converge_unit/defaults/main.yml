@@ -344,3 +344,11 @@ ci_converge_unit_journal_tail_lines: 40
 # The k3s kubeconfig the placement-only converge runs against, the same value the
 # committed unit's Environment= names.
 ci_converge_unit_kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# Run the scale-sets-only converge through the normal committed apply even when
+# no placement file changed (livespec-dev-tooling-jvgllz). Default off. Use
+# `just ansible-apply ansible/ci-pool.yml --tags ci_placement
+# -e ci_converge_unit_run_scale_sets=true --limit <server>`. It decides only
+# whether the step runs; the converge's own inputs digest still skips an
+# unchanged scale set, so this is not an upgrade lever. Never runs under --check.
+ci_converge_unit_run_scale_sets: false
