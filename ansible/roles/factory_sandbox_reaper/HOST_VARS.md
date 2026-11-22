@@ -25,11 +25,16 @@ No ledger is reachable from the sandbox host, so retention is AGE-ONLY plus an
 evidence guard. A sandbox is deleted only when every line holds; any doubt keeps
 it, and every keep names its reason in the journal.
 
-1. State is `stopped` (never running or starting).
+1. State is `stopped` or `running` (never starting). A `running` record is
+   retried after a timed-out delete of a terminal run, and its age bound is
+   the running-pod bound below when the run succeeded.
 2. The run is found in `fabro ps -a`. An unknown run is KEPT and reported.
 3. The run is terminal (`succeeded` or `failed`) with a known end time
    (`start_time + wall_time_ms`).
-4. The run ended at least `factory_sandbox_reaper_min_age_hours` (24) ago.
+4. The run ended at least `factory_sandbox_reaper_min_age_hours` (24) ago. The one
+   exception is a `running` sandbox of a `succeeded` run, which needs only
+   `factory_sandbox_reaper_running_min_age_hours` (2) (see "The running-pod
+   bound" below).
 5. Origin holds no `refs/heads/needs-human/<livespec.dispatch.id>` for the run
    (one `git ls-remote <repo_origin_url> 'refs/heads/needs-human/*'` per
    repository). If that call fails, EVERY sandbox of that repository is kept
@@ -37,6 +42,27 @@ it, and every keep names its reason in the journal.
    kept.
 6. At most `factory_sandbox_reaper_max_deletions` (50) deletions per pass,
    oldest-ended first; the rest wait for the next pass.
+
+## The running-pod bound (R301, livespec-dev-tooling-3z72pg)
+
+A Running pod of a finished run serves nobody and holds a `factory_pod_budget`
+slot, so the 24 h bound is too long for it (two slots were held 21-24 h on
+2026-11-22). A `running` sandbox of a `succeeded` run is therefore eligible after
+`factory_sandbox_reaper_running_min_age_hours` (2) instead. Everything else keeps
+24 h: stopped sandboxes are what a post-mortem reads, and a `failed` run's
+running pod keeps the full bound, so an unpreserved failed tree is never reaped
+on the short one; the journal says `failed run ... kept`. The guards are
+unchanged: no `refs/heads/needs-human/<dispatch id>` on origin, the 50-per-pass
+cap and the dry-run default.
+
+With the hourly timer a leaked slot is bounded to about 3 h (2 h plus the next
+pass). FLEET SCOPE: the role reaps through the one fleet fabro server, so the
+bound covers a pod on every factory node.
+
+Giving the budget reconciler the ended-run signal directly, so it never counts
+such a pod at all, is deferred: the reconciler runs on the k3s server, which has
+no fabro client, so it needs new RBAC or transport and belongs to its own item if
+the 3 h bound proves too loose.
 
 ## Dry-run toggle
 
@@ -57,6 +83,7 @@ The converge's own verification pass always runs report-only, whatever this is.
 | `factory_sandbox_reaper_enabled` | `false` | install the reaper on this host |
 | `factory_sandbox_reaper_apply` | `false` | `true` makes the timer's pass delete; otherwise report-only |
 | `factory_sandbox_reaper_min_age_hours` | `24` | age since the run ended before its sandbox is eligible |
+| `factory_sandbox_reaper_running_min_age_hours` | `2` | the shorter age bound for a `running` sandbox of a `succeeded` run |
 | `factory_sandbox_reaper_max_deletions` | `50` | deletions per pass |
 | `factory_sandbox_reaper_user` / `_group` | the Fabro host user and group | the account the pass runs as |
 | `factory_sandbox_reaper_instance_unit` | `fabro-server` | which declared Fabro instance is reaped |
