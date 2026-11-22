@@ -198,5 +198,49 @@ PY
     fi
   fi
 done
+# RETIRE LIST. `retired-triggers.txt` beside the definitions (its name does not
+# match the *.json glob) names triggers to delete once a merged replacement
+# exists, one per line, three TAB-separated fields: dataset, the EXACT name of
+# the trigger to retire, the EXACT name of its replacement in the same dataset.
+# `#` lines and blank lines are ignored. Apply mode deletes a listed trigger
+# only when nothing failed earlier in this run, the replacement is live and not
+# disabled; it prints `retired <id> [<dataset>] <name>`, or `already-retired
+# <name>` when the name is absent. It never deletes a name that is not listed.
+# Drift mode sends no DELETE and prints `retire-pending <name>` (exit non-zero)
+# for each listed trigger still live. A trigger freed this way gives its slot
+# back to the team's plan cap.
+RETIRE_FILE="${SCRIPT_DIR}/retired-triggers.txt"
+if [ -f "${RETIRE_FILE}" ]; then
+  while IFS=$'\t' read -r rdataset rname rrepl || [ -n "${rdataset}" ]; do
+    case "${rdataset}" in ''|'#'*) continue ;; esac
+    if [ -z "${rname:-}" ] || [ -z "${rrepl:-}" ]; then
+      echo "FAILED retire: malformed line for dataset ${rdataset} (need dataset, name, replacement)" >&2; rc=1; continue
+    fi
+    lrc=0; list_triggers "${API}/1/triggers/${rdataset}" || lrc=$?
+    if [ "${lrc}" -ne 0 ]; then echo "FAILED retire list ${rname}: ${existing}" >&2; rc=1; continue; fi
+    plan="$(printf '%s' "${existing}" | python3 -c '
+import json, sys
+live = json.load(sys.stdin)
+old = next((t["id"] for t in live if t["name"] == sys.argv[1]), "")
+repl = next((t for t in live if t["name"] == sys.argv[2]), None)
+state = "missing" if repl is None else ("disabled" if repl.get("disabled") else "ok")
+print(old)
+print(state)' "${rname}" "${rrepl}")"
+    rid="$(printf '%s\n' "${plan}" | sed -n 1p)"
+    rstate="$(printf '%s\n' "${plan}" | sed -n 2p)"
+    if [ -z "${rid}" ]; then echo "already-retired ${rname}"; continue; fi
+    if [ "${MODE}" = drift ]; then echo "retire-pending ${rname}"; rc=1; continue; fi
+    if [ "${rc}" -ne 0 ]; then echo "FAILED retire ${rname}: an earlier step failed, nothing deleted" >&2; continue; fi
+    if [ "${rstate}" != ok ]; then
+      echo "FAILED retire ${rname}: replacement '${rrepl}' is ${rstate} in ${rdataset}, nothing deleted" >&2; rc=1; continue
+    fi
+    if out="$(hc -X DELETE "${API}/1/triggers/${rdataset}/${rid}")"; then
+      echo "retired ${rid} [${rdataset}] ${rname}"
+    else
+      echo "FAILED retire ${rname}: ${out}" >&2; rc=1
+    fi
+  done < "${RETIRE_FILE}"
+fi
+
 for ((i = 0; i < ${#skipped[@]}; i++)); do echo "dataset-missing ${skipped[i]}"; done
 exit "${rc}"
