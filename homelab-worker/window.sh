@@ -120,7 +120,7 @@ for p in json.load(sys.stdin).get("items", []):
 
 do_snapshot() {
   mkdir -p "$state"
-  [ ! -e "$snap" ] || die "a before-snapshot already exists at $snap; refusing to replace it (revert the window, or archive it deliberately)"
+  [ ! -e "$snap" ] || die "a before-snapshot already exists at $snap; refusing to replace it (revert the window, or run the archive-snapshot action to move it aside)"
   local out
   out="$(kubectl get clusterqueue gates-cq -o json)" || die "could not read gates-cq; no snapshot was taken"
   printf '%s' "$out" | python3 -c '
