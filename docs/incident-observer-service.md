@@ -149,6 +149,20 @@ The existing repository lock continues to serialize actual durable effects.
   change forge labels, authenticate CI jobs or establish a real premerge fence.
   Every mode writer and actual merge authority still need that integration
   before the incident feature can be enabled.
+- `POST /clear-arm` requires the control credential and exactly `repository`,
+  the retained `arm_id`, an immutable `operation_id`, the `operator` clearing it
+  and the `reason`. It is the one sanctioned clear for an unbound arm whose
+  incident chain was retired, which `/invalidate-ci` refuses because the
+  canonical reader no longer verifies it. It needs no canonical read. Under the
+  repository lock it drops the retained arm, so `/admitted` and `/current` no
+  longer report it and the next incident's `/arm` needs no `expected_arm_id`;
+  the operator, reason, time and the cleared arm stay in the record's
+  `arm_clears` history. An arm already bound to its master run, or whose head is
+  an ancestor of the configured target branch in the reference clone, refuses
+  by naming the incident and commit, as does a head the clone cannot place. A
+  head merged by squash or rebase has no ancestor link, so only its bind makes
+  it refuse. Exact retries recover the original receipt; changed bytes under the
+  same `operation_id` refuse. The query credential cannot call this route.
 - `POST /recover` requires the control credential and the reopened-chain
   receipt the orchestrator's regression reopen committed: `repository`,
   `incident_item_id`, `attempt_id`, `phase`, `operation_id`, `generation`,

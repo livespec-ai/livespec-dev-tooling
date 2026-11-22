@@ -16,7 +16,17 @@ QUERY_PATHS = (
     | enable.QUERY_PATHS
 )
 CONTROL_PATHS = (
-    frozenset({"/arm", "/bind", "/invalidate-ci", "/recover", "/reconcile", "/ci/jobs/collect"})
+    frozenset(
+        {
+            "/arm",
+            "/bind",
+            "/clear-arm",
+            "/invalidate-ci",
+            "/recover",
+            "/reconcile",
+            "/ci/jobs/collect",
+        }
+    )
     | enable.CONTROL_PATHS
 )
 # Neither credential reaches it: an incident CI job's PASSED aggregate, authenticated by

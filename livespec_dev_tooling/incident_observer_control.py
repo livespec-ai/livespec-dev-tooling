@@ -22,6 +22,7 @@ from livespec_dev_tooling.incident_observer_admission import (
     arm_before_merge,
     bind_after_merge,
 )
+from livespec_dev_tooling.incident_observer_arm_clear import ObserverArmClear
 from livespec_dev_tooling.incident_observer_authority import CurrentAuthorityReader
 from livespec_dev_tooling.incident_observer_evidence import FocusedEvidenceGate
 from livespec_dev_tooling.incident_observer_forge import MergedRunVerifier
@@ -47,6 +48,8 @@ class ObserverControl:
         settings = self.installation
         if path == "/invalidate-ci":
             return ObserverCiInvalidation(installation=settings).execute(payload=payload)
+        if path == "/clear-arm":
+            return ObserverArmClear(installation=settings).execute(payload=payload)
         if path == "/arm":
             return self._arm(payload=payload)
         if path == "/bind" and set(payload) == {"repository", "head_sha", "run_id"}:
