@@ -302,8 +302,7 @@ incident_observer_installations:
   # workflow_job event reports them (a matrix job once per leg), with incident-ci
   # before ci-green as livespec-dev-tooling's own list has it (incident-ci reaches
   # the orchestrator and overseer with livespec-orchestrator-beads-fabro#5092 and
-  # livespec-overseer#2963; livespec's release-gate-pre-tag is skipped on master
-  # and reports once under that name). Each tenant id is that repository's
+  # livespec-overseer#2963). Each tenant id is that repository's
   # `.beads/metadata.json` project_id. The reader credential: the credential
   # wrapper projects ONE BEADS_DOLT_PASSWORD, the same from every checkout
   # (measured 2026-11-12), and the TENANT it opens is chosen by the reference
@@ -311,10 +310,15 @@ incident_observer_installations:
   # rendered into the clone's pointer. The apply proves that credential opens the
   # served tenant before it serves (tasks/converge.yml), so a later per-tenant
   # password cannot silently cross.
+  # livespec's release-gate-pre-tag is now a three-leg matrix whose legs report
+  # as `release-gate-pre-tag (<target>)`, and its ci-green also needs
+  # merge-group-guard (both measured on master push run 45036539777 at
+  # d98e222ba, 2026-11-22).
   - repository: livespec-ai/livespec
     repository_id: 1215509712
     owner_id: 356397670
     required_jobs:
+      - merge-group-guard
       - check-lint
       - check-format
       - check-types
@@ -325,7 +329,9 @@ incident_observer_installations:
       - check-doctor-static
       - check-copier-template-smoke
       - check-metadata-batch
-      - release-gate-pre-tag
+      - release-gate-pre-tag (check-mutation)
+      - release-gate-pre-tag (check-no-todo-registry)
+      - release-gate-pre-tag (check-no-lloc-soft-warnings)
       - incident-ci
       - ci-green
     port: 8770
