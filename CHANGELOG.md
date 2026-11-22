@@ -58,6 +58,23 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.235.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.234.1...v1.235.0) (2026-11-22)
+
+
+### Features
+
+* **ansible:** the ci_converge_unit role runs the scale-sets-only converge on request through the normal apply (livespec-dev-tooling-jvgllz) ([989e609](https://github.com/livespec-ai/livespec-dev-tooling/commit/989e6097d2da79ff537513a68b3b5add8a73c627))
+* **checks:** check that the hook-template job PATH keeps every sandbox image's own PATH entries (livespec-dev-tooling-ftdz2q) ([4bbc820](https://github.com/livespec-ai/livespec-dev-tooling/commit/4bbc8208639d7ecc7a134e227197044590987e65))
+* the mailbox command sends and reads ledger messages once, and a refused or unusable ledger is never reported as delivered (livespec-dev-tooling-o767ny) ([1a35661](https://github.com/livespec-ai/livespec-dev-tooling/commit/1a356618f5d93c487c70d954339e100b9cc2af42))
+
+
+### Bug Fixes
+
+* a running pod of a succeeded run is reaped after a shorter bound (livespec-dev-tooling-3z72pg) ([351b710](https://github.com/livespec-ai/livespec-dev-tooling/commit/351b7100d0c9d957728fd1fb8293dde34f630005))
+* **ansible:** the Arq root snapshot excludes Dolt's backup-verification scratch (livespec-dev-tooling-gznrq2) ([fb14ea2](https://github.com/livespec-ai/livespec-dev-tooling/commit/fb14ea2e84c079d9fad8076c00ea71cd76749eeb))
+* **incident:** the incident-merge principal requests and accepts contents write, the grant the merge endpoints need (livespec-dev-tooling-pu52qw) ([7439c79](https://github.com/livespec-ai/livespec-dev-tooling/commit/7439c79b20420611a2351bdd104169903cc2abe3))
+* warn on checkbox flip in existing plan queue ([6ec3f96](https://github.com/livespec-ai/livespec-dev-tooling/commit/6ec3f960e998f2fb77e29ed64a9efc6475431e62))
+
 ## [1.234.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.234.0...v1.234.1) (2026-11-22)
 
 
