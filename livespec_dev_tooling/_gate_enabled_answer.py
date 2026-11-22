@@ -17,6 +17,7 @@ third is why this lives on its own:
 
 from __future__ import annotations
 
+import os
 import platform
 
 import structlog
@@ -26,6 +27,7 @@ from livespec_dev_tooling.gate_group_repair import GATE_RUNS_UNDER_GROUP, group_
 
 __all__: list[str] = [
     "GATED_LOCALLY",
+    "GATE_SUITE_RUNS_IN_DELEGATED_JOB",
     "REFUSED_UNENROLLED_HOST",
     "UNENROLLED_NON_LINUX_HOST",
     "enabled_answer",
@@ -34,6 +36,9 @@ __all__: list[str] = [
 GATED_LOCALLY = (
     "delegated gate is switched on for this repository, but this host cannot read the "
     "gates kubeconfig, so this push is gating locally on the full just check aggregate"
+)
+GATE_SUITE_RUNS_IN_DELEGATED_JOB = (
+    "delegated gate is running the gate suite inside the delegated gate Job"
 )
 UNENROLLED_NON_LINUX_HOST = (
     "delegated gate is switched on for this repository, and this non-Linux host is "
@@ -53,6 +58,9 @@ def enabled_answer(*, selected: bool, opted_in: bool, log: structlog.stdlib.Boun
     if group is not None:
         log.warning(GATE_RUNS_UNDER_GROUP, group=group)
         return 0
+    if opted_in and os.environ.get("LIVESPEC_GATE_CONTEXT"):
+        log.info(GATE_SUITE_RUNS_IN_DELEGATED_JOB)
+        return 1
     if opted_in and platform.system() != "Linux":
         log.error(
             UNENROLLED_NON_LINUX_HOST,

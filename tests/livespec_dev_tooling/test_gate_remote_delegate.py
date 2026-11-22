@@ -1351,6 +1351,29 @@ def test_an_opted_in_repository_on_a_host_without_the_credential_gates_locally(
     assert "gating locally" in capsys.readouterr().err
 
 
+def test_a_credentialless_gate_job_says_its_suite_runs_inside_the_delegated_job(
+    *, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A gate pod's local fall-through must not masquerade as a host fallback."""
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    _write_pyproject(
+        repo_root=tmp_path,
+        body="[tool.livespec_dev_tooling]\ndelegated_gate = true\n",
+    )
+    monkeypatch.setenv("GATES_KUBECONFIG", str(tmp_path / "absent.kubeconfig"))
+    monkeypatch.setenv("LIVESPEC_GATE_CONTEXT", "1")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["gate_remote_delegate", "enabled"])
+
+    code = main()
+    lines = capsys.readouterr().err.strip().splitlines()
+
+    assert code == 1
+    assert len(lines) == 1
+    assert "running the gate suite inside the delegated gate Job" in lines[0]
+    assert "gating locally" not in lines[0]
+
+
 def test_a_repository_that_has_not_opted_in_says_nothing_about_the_credential(
     *, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
