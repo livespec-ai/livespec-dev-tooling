@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE="/srv/arq-vps-root-snapshot"
+BASE="${ARQ_SNAPSHOT_BASE:-/srv/arq-vps-root-snapshot}"
 DEST="${BASE}/current"
 META="${DEST}/.arq-vps-root-snapshot"
-LOCK="/run/lock/arq-vps-root-snapshot.lock"
+LOCK="${ARQ_SNAPSHOT_LOCK:-/run/lock/arq-vps-root-snapshot.lock}"
+
+# Absolute source paths kept out of the copy, space separated. The service unit
+# sets this from the role variable arq_root_snapshot_extra_excluded_paths; the
+# default here matches the role default so a hand run excludes the same tree.
+# Set but empty means no extra exclusions. Each path is excluded from whichever
+# sync source contains it, and --delete-excluded then removes any copy already
+# in the snapshot tree.
+EXTRA_EXCLUDED_PATHS="${ARQ_SNAPSHOT_EXTRA_EXCLUDES-/var/lib/doltdb/backup-verification}"
 
 RSYNC_FILTERS=(
     "--filter=- **/.bun/install/***"
@@ -51,6 +59,21 @@ RSYNC_FILTERS=(
     "--filter=- .gvfs"
 )
 
+# Fill extra_filters with anchored rsync excludes for every extra excluded path
+# that lies under the sync source "$1".
+extra_filters=()
+extra_exclude_filters() {
+    local src="${1%/}"
+    local path
+    extra_filters=()
+    for path in ${EXTRA_EXCLUDED_PATHS}; do
+        path="${path%/}"
+        if [[ "${path}" == "${src}"/* ]]; then
+            extra_filters+=("--filter=- ${path#"${src}"}/***")
+        fi
+    done
+}
+
 mkdir -p "${DEST}"
 
 exec 9>"${LOCK}"
@@ -79,12 +102,14 @@ sync_dir() {
     fi
 
     mkdir -p "${DEST}/${dest_rel}"
-    rsync "${rsync_common[@]}" "${src%/}/" "${DEST}/${dest_rel%/}/"
+    extra_exclude_filters "${src}"
+    rsync "${rsync_common[@]}" "${extra_filters[@]}" "${src%/}/" "${DEST}/${dest_rel%/}/"
 }
 
 sync_var_lib() {
     mkdir -p "${DEST}/var/lib"
-    rsync "${rsync_common[@]}" \
+    extra_exclude_filters /var/lib
+    rsync "${rsync_common[@]}" "${extra_filters[@]}" \
         "--filter=- docker/***" \
         "--filter=- containerd/***" \
         "--filter=- apt/lists/***" \
@@ -98,7 +123,8 @@ sync_var_lib() {
 
 sync_var_log() {
     mkdir -p "${DEST}/var/log"
-    rsync "${rsync_common[@]}" \
+    extra_exclude_filters /var/log
+    rsync "${rsync_common[@]}" "${extra_filters[@]}" \
         --max-size=50M \
         --exclude=journal/** \
         --exclude=*.gz \
@@ -148,7 +174,7 @@ main() {
         echo "created_at=$(date --iso-8601=seconds)"
         echo "source_host=$(hostname -f 2>/dev/null || hostname)"
         echo "included_paths=/etc /home /data /root /opt /srv /usr/local /var/lib /var/log"
-        echo "excluded_paths=/dev /proc /sys /run /tmp /var/tmp /var/cache /var/lib/docker /var/lib/containerd /var/lib/dpkg/info /mnt /media /lost+found /snap"
+        echo "excluded_paths=/dev /proc /sys /run /tmp /var/tmp /var/cache /var/lib/docker /var/lib/containerd /var/lib/dpkg/info /mnt /media /lost+found /snap${EXTRA_EXCLUDED_PATHS:+ ${EXTRA_EXCLUDED_PATHS}}"
         echo "dependency_excludes=go/pkg .rustup .cargo .npm .gradle/caches .bun/install .local/share/mise/installs .local/share/mise/downloads .local/share/claude/versions .local/share/containers .local/share/JetBrains/Daemon .local/share/pnpm .local/share/uv .venv venv site-packages __pycache__ node_modules .pnpm-store .cache .claude/plugins .codex/plugins .codex/.tmp .vscode-server/extensions .vscode/extensions build dist target ci-runner/_work ci-runner/cache ci-runner/runners ubuntu/gate-runner/_work"
         echo "self_excludes=/srv/arq-vps-root-snapshot"
         printf 'rsync_statuses='
