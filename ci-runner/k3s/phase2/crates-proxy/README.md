@@ -37,11 +37,12 @@ matrix wall-clock acceptance rides on the compilation cache (B1), not here.
 
 ## Operating it
 
-- **Converge / re-apply**: `KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  ./converge-crates-proxy.sh` on the host. After editing the manifest, also
-  re-apply the `ci_converge_unit` role (`just ansible-apply ansible/ci-pool.yml
-  --tags ci_converge_unit` from the control node) so the boot copy under
-  `/usr/local/lib/ci-runner-k3s/crates-proxy/` matches.
+- **Converge / re-apply**: after editing the manifest, re-apply the
+  `ci_converge_unit` role (`just ansible-apply ansible/ci-pool.yml --tags
+  ci_converge_unit` from the control node) so the boot copy under
+  `/usr/local/lib/ci-runner-k3s/crates-proxy/` matches. Then, on the host,
+  run `sudo systemctl start converge-ci-stack.service`. This root-owned boot
+  converge applies the installed manifest; it is the normal apply path.
 - **Is it live?** `kubectl -n ci-crates-proxy get deploy,pods,svc`; from the
   host, `curl -s http://127.0.0.1:3080/index/config.json` must return a
   `dl` URL pointing back at the proxy, and `curl -s
