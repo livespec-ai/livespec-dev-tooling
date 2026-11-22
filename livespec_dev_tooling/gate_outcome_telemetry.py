@@ -86,7 +86,12 @@ _SUITE_GREEN_SPAN_NAME = "livespec.suite-green.outcome"
 
 
 def build_span_payload(
-    *, outcome: str, repository: str | None, tree_hash: str | None, job_name: str | None
+    *,
+    outcome: str,
+    repository: str | None,
+    tree_hash: str | None,
+    job_name: str | None,
+    stage: str = "pre-push",
 ) -> dict[str, object]:
     """Build the OTLP payload for EXACTLY ONE span describing one decided run.
 
@@ -104,6 +109,7 @@ def build_span_payload(
         ("livespec.gate.repository", repository),
         ("livespec.gate.tree_hash", tree_hash),
         ("livespec.gate.job_name", job_name),
+        ("livespec.gate.stage", stage),
     )
     now = str(time.time_ns())
     return {
@@ -147,28 +153,35 @@ def post_span(*, endpoint: str, payload: dict[str, object]) -> None:
     success and on failure alike, because the caller has nothing to decide
     either way.
     """
-    request = urllib.request.Request(  # noqa: S310  — endpoint is a fixed http(s) receiver URL.
-        url=f"{endpoint.removesuffix('/')}/v1/traces",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with (
-        contextlib.suppress(urllib.error.URLError, OSError, ValueError),
-        urllib.request.urlopen(request, timeout=_POST_TIMEOUT_S) as response,  # noqa: S310
-    ):
-        _ = response.read()
+    with contextlib.suppress(urllib.error.URLError, OSError, ValueError):
+        request = urllib.request.Request(  # noqa: S310  — endpoint is a fixed http(s) receiver URL.
+            url=f"{endpoint.removesuffix('/')}/v1/traces",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=_POST_TIMEOUT_S) as response:  # noqa: S310
+            _ = response.read()
 
 
 def emit_gate_outcome(
-    *, outcome: str, repository: str | None, tree_hash: str | None, job_name: str | None
+    *,
+    outcome: str,
+    repository: str | None,
+    tree_hash: str | None,
+    job_name: str | None,
+    stage: str = "pre-push",
 ) -> None:
     """Emit one delegated gate run's outcome event to the configured receiver."""
     endpoint = (os.environ.get(ENDPOINT_ENV) or "").strip() or DEFAULT_ENDPOINT
     post_span(
         endpoint=endpoint,
         payload=build_span_payload(
-            outcome=outcome, repository=repository, tree_hash=tree_hash, job_name=job_name
+            outcome=outcome,
+            repository=repository,
+            tree_hash=tree_hash,
+            job_name=job_name,
+            stage=stage,
         ),
     )
 

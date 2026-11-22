@@ -459,6 +459,7 @@ def test_a_host_that_cannot_mint_the_token_refuses_the_push_as_a_missing_verdict
             "repository": None,
             "tree_hash": None,
             "job_name": None,
+            "stage": "pre-push",
         }
     ]
 
