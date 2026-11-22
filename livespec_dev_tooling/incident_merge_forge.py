@@ -14,7 +14,7 @@ it must read at merge time live on the forge, and this module reads them
   concluded `success` on the exact head SHA. A ruleset bypass also skips `required_status_checks`,
   so this verification is the principal's own and is never left to the forge.
 
-EVERY READ FITS THE MERGE APP'S GRANT (Contents read, Pull requests read and write, Checks
+EVERY READ FITS THE MERGE APP'S GRANT (Contents write, Pull requests read and write, Checks
 read, Commit statuses read, Metadata read). Measured live with the App's own token
 (2026-11-18, livespec-dev-tooling-o6u7jm): the classic branch-protection read answers 403
 (it needs Administration read) and the Actions runs read needs Actions read, so neither is

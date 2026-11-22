@@ -3,7 +3,7 @@
 SPECIFICATION/contracts.md gives the expedited incident merge to an INDEPENDENTLY
 provisioned incident-merge principal. Its App id
 must be the committed incident-merge integration id and never the recovery App's,
-and its installation token may hold only contents read, pull_requests write, checks
+and its installation token may hold only contents write, pull_requests write, checks
 read, statuses read and GitHub's mandatory metadata read.
 """
 
@@ -27,7 +27,7 @@ _RECOVERY_ID = 1717
 _INSTALLATION = "repos/owner/repo/installation"
 _TOKENS = "app/installations/9/access_tokens"
 _GRANT = {
-    "contents": "read",
+    "contents": "write",
     "pull_requests": "write",
     "checks": "read",
     "statuses": "read",
@@ -176,7 +176,7 @@ def test_connect_requests_exactly_the_merge_grant_and_calls_as_the_installation(
         {**_GRANT, "administration": "read"},
         {**_GRANT, "workflows": "write"},
         {**_GRANT, "issues": "write"},
-        {**_GRANT, "contents": "write"},
+        {**_GRANT, "contents": "read"},
         {**_GRANT, "pull_requests": "read"},
         {key: value for key, value in _GRANT.items() if key != "checks"},
         {key: value for key, value in _GRANT.items() if key != "metadata"},
