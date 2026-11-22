@@ -209,12 +209,13 @@ def main(
 ) -> int:
     """Run ``mailbox send`` or ``mailbox read`` against this tenant."""
     environment = os.environ if environ is None else environ
+    arguments = sys.argv[1:] if argv is None else list(argv)
     sender = environment.get(_SEAT_NAME_ENV, "")
-    if not sender:
+    if not sender and arguments[:1] != ["read"]:
         return 2
     ledger = BeadsMailboxLedger(connection=connection or BeadsTenantConnection(repo=Path.cwd()))
     return mailbox.main(
-        argv=sys.argv[1:] if argv is None else argv,
+        argv=arguments,
         ledger=ledger,
         sender=sender,
         now=now,
