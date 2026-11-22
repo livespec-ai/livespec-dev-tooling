@@ -27,6 +27,9 @@
   // reviewable opt-out. Written explicitly at install time so the obligation is
   // readable here rather than inferred from a verifier failure.
   "worktree_discipline": { "pack": "required" },
+  "ci": {
+    "priority_bands": { "high": 2, "medium": 5 }
+  },
   "git_author": {
     "operator_name": "Chad Woolley",
     "operator_email": "thewoolleyman@gmail.com",

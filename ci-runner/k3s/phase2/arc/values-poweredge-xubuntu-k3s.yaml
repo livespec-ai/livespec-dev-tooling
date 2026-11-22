@@ -72,6 +72,9 @@ listenerTemplate:
       - name: listener
 
 template:
+  metadata:
+    labels:
+      kueue.x-k8s.io/priority-class: ci-normal
   spec:
     # Tolerate the factory placement taint (orchestrator bd-ib-plon2p,
     # ../factory-pressure-placement/README.md): it exists to steer FACTORY

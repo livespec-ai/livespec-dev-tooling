@@ -1,0 +1,13 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: ci-normal
+value: 0
+description: Normal CI runner workloads.
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata:
+  name: ci-high
+value: 100
+description: High-band CI runner workloads admitted ahead of ci-normal.
