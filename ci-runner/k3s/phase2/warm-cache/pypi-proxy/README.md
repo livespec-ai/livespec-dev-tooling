@@ -47,12 +47,13 @@ The comparison the choice rests on (measured 2026-09-04, uv 0.9.26) is in
 
 ## Operating it
 
-- **Converge / re-apply**: `KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  ../converge-warm-cache.sh` on the host (it applies this manifest first).
-  After editing the manifest, also re-apply the `ci_converge_unit` role
-  (`just ansible-apply ansible/ci-pool.yml --tags ci_converge_unit` from the
-  control node) so the boot copy under
-  `/usr/local/lib/ci-runner-k3s/warm-cache/pypi-proxy/` matches.
+- **Converge / re-apply**: after editing the manifest, re-apply the
+  `ci_converge_unit` role (`just ansible-apply ansible/ci-pool.yml --tags
+  ci_converge_unit` from the control node) so the boot copy under
+  `/usr/local/lib/ci-runner-k3s/warm-cache/pypi-proxy/` matches. Then, on the
+  host, run `sudo systemctl start converge-ci-stack.service`. This root-owned
+  boot converge applies this manifest before the CronJob's objects; it is the
+  normal apply path.
 - **Is it live?** `kubectl -n ci-warm-cache get deploy,pods,svc pypi-proxy`.
   From a pod in the cluster (or `kubectl -n ci-warm-cache exec` into the
   populator's Job pod), `curl -s http://pypi-proxy.ci-warm-cache.svc.cluster.local:8081/health`
