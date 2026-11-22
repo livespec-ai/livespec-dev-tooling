@@ -43,6 +43,7 @@ import pytest
 from livespec_dev_tooling.checks import branch_protection_alignment, master_ci_green
 from livespec_dev_tooling.checks._gate_context import (
     GATE_CONTEXT_ENV,
+    GATE_PREVIEW_ENV,
     GATE_REPOSITORY_ENV,
     gate_repository,
 )
@@ -213,6 +214,7 @@ def _stage_gate_pod(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PATH", _install_fake_gh(root=tmp_path))
     monkeypatch.setenv(GATE_CONTEXT_ENV, "1")
+    monkeypatch.delenv(GATE_PREVIEW_ENV, raising=False)
     if declare_repository:
         monkeypatch.setenv(GATE_REPOSITORY_ENV, _GATED_REPOSITORY)
     else:
