@@ -39,6 +39,11 @@ factory_sandbox_reaper_lithos_config: /etc/livespec-factory-sandbox-reaper/litho
 
 # Retention. Age-only, because no ledger is reachable from the sandbox host.
 factory_sandbox_reaper_min_age_hours: 24
+# A RUNNING sandbox of a SUCCEEDED run serves nobody and holds a
+# factory_pod_budget slot, so it is reaped after this shorter bound (R301,
+# livespec-dev-tooling-3z72pg). Stopped sandboxes and failed runs keep the 24 h
+# bound above. With the hourly timer a leaked slot is bounded to about 3 h.
+factory_sandbox_reaper_running_min_age_hours: 2
 # Safety bound on one pass, applied after every other guard.
 factory_sandbox_reaper_max_deletions: 50
 

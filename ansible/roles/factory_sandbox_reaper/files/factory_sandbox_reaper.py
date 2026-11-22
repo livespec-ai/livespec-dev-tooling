@@ -18,7 +18,11 @@ and every keep names its reason:
      timed-out delete of a terminal run;
   2. its Fabro run is found in `fabro ps -a` (an unknown run is kept and shouted);
   3. that run is terminal (succeeded or failed) and its end time is known;
-  4. the run ended at least REAPER_MIN_AGE_HOURS ago;
+  4. the run ended at least REAPER_MIN_AGE_HOURS ago, or, for a RUNNING sandbox of
+     a SUCCEEDED run only, at least REAPER_RUNNING_MIN_AGE_HOURS ago (R301,
+     livespec-dev-tooling-3z72pg: a running pod of a finished run serves nobody and
+     holds a factory_pod_budget slot). A failed run's running pod keeps the full
+     bound, so an unpreserved failed tree is never reaped on the short one;
   5. origin holds no preserved ref `refs/heads/needs-human/<dispatch id>` for the
      run's dispatch, and origin could be asked (an ls-remote failure keeps every
      sandbox of that repository);
@@ -29,7 +33,8 @@ reports unless REAPER_APPLY is `1`.
 
 Environment (set by the systemd unit from the role's variables):
   REAPER_FABRO_BIN, REAPER_FABRO_SERVER, REAPER_LITHOS_BIN, REAPER_PROVIDER,
-  REAPER_MIN_AGE_HOURS, REAPER_MAX_DELETIONS, REAPER_APPLY.
+  REAPER_MIN_AGE_HOURS, REAPER_RUNNING_MIN_AGE_HOURS (defaults to
+  REAPER_MIN_AGE_HOURS when unset), REAPER_MAX_DELETIONS, REAPER_APPLY.
 """
 
 from __future__ import annotations
@@ -133,6 +138,9 @@ def reap(
     """One pass: list, decide, report, and (only when REAPER_APPLY=1) delete."""
     provider = env.get("REAPER_PROVIDER", "kubernetes")
     min_age = timedelta(hours=float(env.get("REAPER_MIN_AGE_HOURS", "24")))
+    running_min_age = timedelta(
+        hours=float(env.get("REAPER_RUNNING_MIN_AGE_HOURS", env.get("REAPER_MIN_AGE_HOURS", "24")))
+    )
     max_deletions = int(env.get("REAPER_MAX_DELETIONS", "50"))
     apply = env.get("REAPER_APPLY", "0") == "1"
     driver = [env["REAPER_LITHOS_BIN"], "--provider", provider, "--events", "off"]
@@ -153,6 +161,7 @@ def reap(
         runs=parse_runs(text=ps.stdout),
         now=now,
         min_age=min_age,
+        running_min_age=running_min_age,
     )
     preserved = fetch_preserved(
         origins=[c[1].origin_url for c in candidates if c[1].origin_url is not None], run=run
