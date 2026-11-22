@@ -125,13 +125,13 @@
   when: k3s_config_cluster_role == 'agent'
   notify: Settle the agent k3s runtime
 
-- name: Read this agent's profile KUBELET_ARGS and NODE_DATA_DIR
-  # The same read shape as the taint above, on the same file: this role renders
-  # every per-node fact of the k3s START CONFIGURATION, and all of them come out
-  # of the one committed profile. A missing or empty key yields '' — a node with
-  # no second workload to reserve against, and a node on k3s's own default data
-  # directory — and both tasks below are gated on non-empty rather than rendering
-  # a file that says nothing.
+- name: Read this node's profile KUBELET_ARGS and NODE_DATA_DIR
+  # KUBELET_ARGS is a kubelet setting, not an agent-only setting: the pool's
+  # server runs an in-process kubelet too. Every per-node fact of that start
+  # configuration comes from this one committed profile. A missing or empty key
+  # yields '' — a node with no separate workload to reserve against, and a node
+  # on k3s's default data directory — and the render tasks below are gated on a
+  # non-empty value rather than creating a file that says nothing.
   ansible.builtin.set_fact:
     k3s_config_kubelet_args: >-
       {{ lookup('ansible.builtin.file', k3s_config_profile)
@@ -139,18 +139,15 @@
     k3s_config_node_data_dir: >-
       {{ lookup('ansible.builtin.file', k3s_config_profile)
       | regex_findall('^NODE_DATA_DIR=(.*)$', multiline=True) | first | default('') }}
-  when: k3s_config_cluster_role == 'agent'
-
-- name: Derive the kubelet argument records this agent appends
+- name: Derive the kubelet argument records this node appends
   # Space-separated records, so `.split()` on whitespace IS the record list and
   # `to_json` renders it as the YAML flow sequence k3s reads.
   ansible.builtin.set_fact:
     k3s_config_kubelet_arg_records: "{{ k3s_config_kubelet_args.split() | to_json }}"
   when:
-    - k3s_config_cluster_role == 'agent'
     - k3s_config_kubelet_args | length > 0
 
-- name: Render this agent's own kubelet arguments from its committed profile
+- name: Render this node's kubelet arguments from its committed profile
   # THE NODE'S KUBELET BUDGET, AS CONFIGURATION. The kubelet must hold back what
   # the host itself needs (k3s, sshd, any workload that runs beside the kubelet,
   # the page cache), or the first node-pressure eviction takes a running
@@ -171,7 +168,6 @@
     mode: "0600"
   become: true
   when:
-    - k3s_config_cluster_role == 'agent'
     - k3s_config_kubelet_args | length > 0
   notify: Settle the agent k3s runtime
 
