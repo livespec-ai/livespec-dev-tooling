@@ -65,6 +65,16 @@ all:
         # tailscale-admin record.
         hetzner-xubuntu:
           ansible_user: ubuntu
+    # The host that runs the stopgap pr-throughput emitter loop
+    # (ansible/pr-throughput-emitter.yml, livespec-dev-tooling-h3b3ca). Retire the
+    # group when livespec-dev-tooling-gaetnq's reconciler replaces the stopgap.
+    pr_throughput_emitter_hosts:
+      hosts:
+        # This machine is the control node: it manages itself over a local
+        # connection (no ssh credential toward itself exists).
+        hetzner-xubuntu:
+          ansible_connection: local
+          ansible_user: ubuntu
     # The maintainer's Macs that run interactive Claude Code sessions
     # (livespec-dev-tooling-i76rv2). The one non-Ubuntu group in this tree, and
     # converged ONLY for claude_memory_write_guard by

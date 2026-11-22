@@ -1,0 +1,92 @@
+---
+# pr_throughput_emitter: see defaults/main.yml. Every systemd call is scope: user
+# and carries XDG_RUNTIME_DIR, because an ssh session has no user bus of its own.
+
+- name: Refuse an unknown state
+  ansible.builtin.assert:
+    that: pr_throughput_emitter_state in ['present', 'absent']
+    fail_msg: pr_throughput_emitter_state must be present or absent
+
+- name: Check whether the pr-throughput emitter unit file is already installed
+  ansible.builtin.stat:
+    path: "{{ pr_throughput_emitter_unit_dir }}/{{ pr_throughput_emitter_unit }}"
+  register: pr_throughput_emitter_unit_present
+
+- name: Install and arm the pr-throughput emitter
+  when: pr_throughput_emitter_state == 'present'
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+  block:
+    - name: Read whether this account keeps its user manager across reboots
+      ansible.builtin.stat:
+        path: "/var/lib/systemd/linger/{{ ansible_facts['user_id'] }}"
+      register: pr_throughput_emitter_linger
+
+    - name: Assert linger is on, or the unit would not start at boot
+      ansible.builtin.assert:
+        that: pr_throughput_emitter_linger.stat.exists
+        fail_msg: >-
+          {{ ansible_facts['user_id'] }} has no linger, so its user manager starts only at login
+          and this unit would not run after a reboot. Run `loginctl enable-linger` for it first.
+
+    - name: Read where systemd loaded the unit from
+      ansible.builtin.systemd_service:
+        name: "{{ pr_throughput_emitter_unit }}"
+        scope: user
+      register: pr_throughput_emitter_loaded
+      check_mode: false
+
+    - name: Stop a transient copy of the unit (the one-time cutover from systemd-run)
+      # A transient unit in /run shadows the unit file installed below, and it
+      # vanishes at reboot, which is the defect this role fixes.
+      ansible.builtin.systemd_service:
+        name: "{{ pr_throughput_emitter_unit }}"
+        scope: user
+        state: stopped
+      when: pr_throughput_emitter_loaded.status.FragmentPath is match('/run/')
+
+    - name: Create the user unit directory
+      ansible.builtin.file:
+        path: "{{ pr_throughput_emitter_unit_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Install the pr-throughput emitter unit
+      ansible.builtin.template:
+        src: pr-throughput-emit-loop.service.j2
+        dest: "{{ pr_throughput_emitter_unit_dir }}/{{ pr_throughput_emitter_unit }}"
+        mode: "0644"
+      notify: Reload the user systemd manager for the pr-throughput emitter
+
+    - name: Publish a changed unit before arming it
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable and start the pr-throughput emitter
+      ansible.builtin.systemd_service:
+        name: "{{ pr_throughput_emitter_unit }}"
+        scope: user
+        enabled: true
+        state: started
+      when: not ansible_check_mode or pr_throughput_emitter_unit_present.stat.exists
+
+- name: Remove the pr-throughput emitter (the committed revert)
+  when: pr_throughput_emitter_state == 'absent'
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+  block:
+    - name: Stop and disable the unit
+      ansible.builtin.systemd_service:
+        name: "{{ pr_throughput_emitter_unit }}"
+        scope: user
+        enabled: false
+        state: stopped
+      when: pr_throughput_emitter_unit_present.stat.exists
+
+    - name: Remove the unit file
+      ansible.builtin.file:
+        path: "{{ pr_throughput_emitter_unit_dir }}/{{ pr_throughput_emitter_unit }}"
+        state: absent
+      notify: Reload the user systemd manager for the pr-throughput emitter
+
+    - name: Publish the removal
+      ansible.builtin.meta: flush_handlers

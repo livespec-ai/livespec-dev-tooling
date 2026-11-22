@@ -1,0 +1,15 @@
+# Managed by ansible (livespec-dev-tooling role pr_throughput_emitter). Do not edit.
+[Unit]
+Description=Stopgap pr-throughput emitter loop (plan throughput-metric, livespec-dev-tooling-h3b3ca)
+
+[Service]
+Type=simple
+# The script is not executable (mode 0664), so it is run through bash. The loop
+# exits 0 on its RETIRED file ({{ pr_throughput_emitter_retired_file }}), and
+# Restart=on-failure leaves a clean exit stopped.
+ExecStart=/bin/bash {{ pr_throughput_emitter_script }}
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
