@@ -1498,12 +1498,12 @@ holds each ceiling to the rule or to its row here, and
 The first exception, `livespec-orchestrator-beads-fabro` at 12 (2026-10-19),
 was deleted on 2026-10-22, when the rule itself exceeded it.
 
-| Repository | `nominalQuota` | Rule value | `maxRunners` | Recorded |
-|---|---|---|---|---|
-| `fabro` | 1 | 6 | **2** | 2026-11-05 |
-| `livespec-orchestrator-master` | 1 | 6 | **4** | 2026-11-12 |
-| `livespec-dev-tooling` | 7 | 14 | **20** | 2026-11-20 |
-| `livespec-orchestrator-beads-fabro` | 6 | 12 | **14** | 2026-11-18 |
+| Repository | `nominalQuota` | Rule value | `maxRunners` | Recorded | Acceptance check | Kill switch |
+|---|---|---|---|---|---|---|
+| `fabro` | 1 | 6 | **2** | 2026-11-05 | First cold run stays within its storage and Slow SQL limits | Restore the rule value 6 |
+| `livespec-orchestrator-master` | 1 | 6 | **4** | 2026-11-12 | After converge, its listener and GitHub label are present | Restore the rule value 6 |
+| `livespec-dev-tooling` | 7 | 14 | **20** | 2026-11-20 | Within 24 h, it borrows while small queues are idle and pending stays bounded | Restore the rule value 14 |
+| `livespec-orchestrator-beads-fabro` | 6 | 12 | **24** | 2026-11-18 | In 24 h, fewer than 10 ceiling/free-slot minutes and no added kine Slow SQL | Restore maxRunners 14 |
 
 **`fabro`, 6 to 2 (2026-11-05).** The rule's 2x multiple is kept and its floor
 of 6 is waived. The floor protects a small-quota repository with a 13–21-job
@@ -1542,6 +1542,26 @@ empty. The measurement is in "Small-queue floor of 2: cohort 30 re-split
 queue's admitted count exceeds its new quota in the hours when the small queues
 are idle, and Kueue's pending count stays bounded by maxRunners. If neither
 queue ever borrows past its rule value, drop the row and take the rule value.
+
+**`livespec-orchestrator-beads-fabro`, 14 to 24 (2026-11-19).** The 24-hour
+read of GitHub job records found 1,801 k3s jobs from the 260 most recent runs:
+200 jobs waited over two minutes with minutes at the 14-runner ceiling, for
+605 job-minutes at that ceiling. The scale set's ClusterQueue remains at its
+committed dispatch-time nominalQuota, which is recorded in the table above;
+this exception changes neither that queue nor the cohort allocation.
+
+**Order.** Merge this change; the next `converge-ci-stack` run carries it,
+because every converge applies all of master and there is no separate apply.
+The acceptance window begins at that converge, and the converge record names
+the run that starts it.
+
+**Acceptance check.** Over the 24 hours after that converge, minutes at the
+24-runner ceiling while three or more cohort slots are free fall below 10, and
+kine Slow SQL per hour does not exceed its pre-apply baseline. Otherwise,
+revert to 14.
+
+**Kill switch.** Restore `maxRunners: 14` in this scale set and let the next
+converge carry it.
 
 ## The gates quota on gmktec-xubuntu and hp-xubuntu (2026-11-03)
 

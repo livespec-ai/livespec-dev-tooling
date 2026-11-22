@@ -106,17 +106,8 @@ _CHURN_SLOT = "ci-runner.io/churn-slot"
 _PHYSICAL_CAP = 482
 _CEILING_MULTIPLE = 2
 _CEILING_FLOOR = 6
-# The ceilings DERIVATION.md "Recorded exceptions to the rule" moves off
-# `max(2 x nominalQuota, 6)`, keyed by ClusterQueue — the same table
-# tests/spec/test_jit_admission_budget.py holds to its DERIVATION.md rows. An
-# exception may waive the rule, never the borrowing clause: it must still sit
-# ABOVE the floor it bounds.
-_RECORDED_CEILING_EXCEPTIONS: dict[str, int] = {
-    "fabro-cq": 2,
-    "livespec-orchestrator-master-cq": 4,
-    "livespec-dev-tooling-cq": 20,
-    "livespec-orchestrator-beads-fabro-cq": 14,
-}
+_DERIVATION = _KUEUE_DIR / "DERIVATION.md"
+_EXCEPTIONS_HEADING = "### Recorded exceptions to the rule"
 
 _DOC_SEPARATOR = re.compile(r"^---$", re.MULTILINE)
 _KIND = re.compile(r"^kind:\s*(?P<kind>\S+)$", re.MULTILINE)
@@ -231,6 +222,41 @@ def _routed_scale_sets() -> dict[str, tuple[str, int, str]]:
     return routed
 
 
+def _recorded_exception_ceilings() -> dict[str, int]:
+    """Read exception ceilings from DERIVATION.md through committed routing."""
+    section = _DERIVATION.read_text(encoding="utf-8").split(_EXCEPTIONS_HEADING, 1)[1]
+    lines = section.splitlines()
+    table_start = next(index for index, line in enumerate(lines) if line.startswith("|"))
+    table = []
+    for line in lines[table_start:]:
+        if not line.startswith("|"):
+            break
+        table.append(line)
+    headers = [cell.strip().strip("`") for cell in table[0].strip("|").split("|")]
+    required = {"Repository", "maxRunners"}
+    assert required <= set(headers), f"recorded-exceptions table needs {sorted(required)}"
+    targets = _local_queue_targets(documents=_cohort_documents())
+    exceptions: dict[str, int] = {}
+    for line in table[2:]:
+        row = dict(
+            zip(
+                headers,
+                (cell.strip().strip("`") for cell in line.strip("|").split("|")),
+                strict=False,
+            )
+        )
+        values_path = _ARC_DIR / f"values-{row['Repository']}.yaml"
+        queue = _QUEUE_NAME.search(values_path.read_text(encoding="utf-8"))
+        assert queue is not None, f"{values_path.name} must route through a LocalQueue"
+        cluster_queue = targets.get(queue.group("lq"), queue.group("lq"))
+        assert cluster_queue not in exceptions, (
+            f"each ClusterQueue may have one recorded ceiling exception; "
+            f"clusterQueue={cluster_queue}"
+        )
+        exceptions[cluster_queue] = int(row["maxRunners"].strip("*"))
+    return exceptions
+
+
 def _borrowing_limited(*, members: dict[str, tuple[int, str | None]]) -> list[str]:
     """Each cohort member that narrows Kueue's default, unlimited within-cohort borrowing."""
     return sorted(
@@ -265,7 +291,7 @@ def _ceilings_without_borrow_headroom(
             f"{name} must route to a cohort member before its logical ceiling can be bounded; "
             f"local_queue={local_queue} targets={targets}"
         )
-        expected = _RECORDED_CEILING_EXCEPTIONS.get(
+        expected = _recorded_exception_ceilings().get(
             cluster_queue, max(_CEILING_MULTIPLE * floor, _CEILING_FLOOR)
         )
         if ceiling == expected and ceiling > floor:
