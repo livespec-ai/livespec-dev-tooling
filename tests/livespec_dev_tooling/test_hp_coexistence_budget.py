@@ -245,26 +245,17 @@ def test_the_rendered_drop_in_appends_to_the_fleets_shared_kubelet_arg_list() ->
 
 
 def test_a_profile_declaring_no_kubelet_args_renders_no_drop_in_at_all() -> None:
-    """The control arm: poweredge and gmktec must be untouched by this mechanism.
+    """The role renders an argument drop-in only when a profile declares arguments.
 
-    Both declare an empty `KUBELET_ARGS`, and a drop-in carrying an EMPTY
-    `kubelet-arg+` list would be a file that says nothing and a converge that
-    reports a change on a node with no second workload to reserve against. So
-    the render is GATED on the key being non-empty, not merely rendered empty —
-    which is the opposite of the node-taint drop-in beside it, where an empty
-    list positively states "this node is open".
+    A `kubelet-arg+` drop-in with an empty list says nothing, so the render is
+    gated on a non-empty profile value rather than creating a spurious managed
+    file.  The target nodes' values are intentionally not asserted here: their
+    node-specific reservations are covered by their own memory-pressure test.
     """
     body = _task_whose_body_names(needle="k3s_config_kubelet_args_drop_in")
     assert (
         "k3s_config_kubelet_args | length > 0" in body
     ), f"the render must be gated on a non-empty KUBELET_ARGS;\nbody={body!r}"
-    for profile in ("poweredge-xubuntu", "gmktec-xubuntu"):
-        text = (_HP_PROFILE.parent / f"{profile}.env").read_text(encoding="utf-8")
-        assert _profile_kubelet_args(text=text) == "", (
-            f"{profile} must declare an empty KUBELET_ARGS: it runs the pool's CI work and "
-            f"nothing else, so there is no second workload for the kubelet to hold capacity "
-            f"back from"
-        )
 
 
 def _task_whose_body_names(*, needle: str) -> str:
