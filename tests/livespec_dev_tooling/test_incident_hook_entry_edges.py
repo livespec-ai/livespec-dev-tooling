@@ -283,7 +283,6 @@ def test_empty_inventory_is_explicit_and_never_ordinary_success(
 def test_undeclared_inventory_fails_closed_with_a_named_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-vxs7ru
     _reading, receipts = _wired(root=tmp_path, monkeypatch=monkeypatch, inventory=False)
     assert module.main(argv=["pre-commit"]) == 78
     err = capsys.readouterr().err
