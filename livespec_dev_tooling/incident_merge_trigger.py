@@ -41,7 +41,7 @@ from livespec_dev_tooling.incident_merge_forge import (
     required_checks_verdict,
 )
 
-__all__ = ["main", "run"]
+__all__: list[str] = ["main", "run"]
 
 DEFAULT_REPOSITORY = "livespec-ai/livespec-dev-tooling"
 DEFAULT_STATE_DIR = Path("/var/lib/livespec-incident/receipts")
