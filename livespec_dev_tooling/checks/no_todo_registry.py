@@ -273,7 +273,8 @@ def _release_tier_failures(
     Rejects an UNOWNED entry, and an owned one whose work-item is checkably
     closed or nonexistent. An owned entry whose liveness cannot be
     established PASSES, but emits a `liveness_unverified` diagnostic so it
-    is never indistinguishable from a verified one.
+    is never indistinguishable from a verified one. The final summary makes
+    the release-wide number of verified and unverified owners explicit.
 
     `snapshot` is the shared resolver's id → status view of the repository's
     own configured store, on the FAILURE track when it did not answer. It is
@@ -287,6 +288,8 @@ def _release_tier_failures(
     """
     emit = structlog.get_logger("no_todo_registry")
     failing = 0
+    liveness_verified_count = 0
+    liveness_unverified_count = 0
     for entry in offenders:
         if not _is_owned(entry=entry):
             failing += 1
@@ -301,6 +304,7 @@ def _release_tier_failures(
         work_item = cast("str", entry.get("work_item")).strip()
         live = resolve_liveness(work_item=work_item, snapshot=snapshot)
         if isinstance(live, IOFailure):
+            liveness_unverified_count += 1
             emit.warning(
                 "owned TODO entry accepted; work-item liveness UNVERIFIED "
                 "(the repository's configured work-item store did not answer)",
@@ -311,18 +315,25 @@ def _release_tier_failures(
                 unreachable_reason=unsafe_perform_io(live.failure()).reason,
                 failing=False,
             )
-        elif not unsafe_perform_io(live.unwrap()):
-            failing += 1
-            emit.error(
-                'heading-coverage.json entry has `test: "TODO"` owned by a '
-                "closed or nonexistent work-item",
-                heading=entry.get("heading"),
-                spec_root=entry.get("spec_root"),
-                work_item=work_item,
-                resolved_status=resolved_status(work_item=work_item, snapshot=snapshot),
-                fail_env_var=_FAIL_ENV_VAR,
-                failing=True,
-            )
+        else:
+            liveness_verified_count += 1
+            if not unsafe_perform_io(live.unwrap()):
+                failing += 1
+                emit.error(
+                    'heading-coverage.json entry has `test: "TODO"` owned by a '
+                    "closed or nonexistent work-item",
+                    heading=entry.get("heading"),
+                    spec_root=entry.get("spec_root"),
+                    work_item=work_item,
+                    resolved_status=resolved_status(work_item=work_item, snapshot=snapshot),
+                    fail_env_var=_FAIL_ENV_VAR,
+                    failing=True,
+                )
+    emit.info(
+        "heading-coverage TODO liveness summary",
+        liveness_verified_count=liveness_verified_count,
+        liveness_unverified_count=liveness_unverified_count,
+    )
     return failing
 
 
