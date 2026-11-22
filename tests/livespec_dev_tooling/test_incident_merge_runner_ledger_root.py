@@ -88,7 +88,7 @@ def _script(*, tmp_path: Path) -> Path:
     return script
 
 
-def _go(*, tmp_path: Path, ledger_root: Path | None) -> int:
+def _go(*, tmp_path: Path, ledger_root: Path | None, run_text_command: Mock | None = None) -> int:
     argv = [
         "--pr",
         "7",
@@ -106,26 +106,33 @@ def _go(*, tmp_path: Path, ledger_root: Path | None) -> int:
         owner_uid=0,
         interpreter=Path("/usr/bin/env"),
         connect=Mock(return_value=SimpleNamespace(token=_APP_TOKEN)),
-        run_text_command=Mock(return_value=(0, "")),
+        run_text_command=run_text_command or Mock(return_value=(0, "")),
         make_reader=Mock(),
     )
 
 
-def test_the_authority_runs_with_the_ledger_root_as_its_repo_and_working_directory(
-    monkeypatch, tmp_path
-):
+def test_the_authority_and_ledger_comment_run_from_the_validated_ledger_root(monkeypatch, tmp_path):
     merge = _world(monkeypatch)
     authority = Mock(return_value="answer")
+    run_text_command = Mock(return_value=(0, ""))
+
+    def merged(**kwargs):
+        kwargs["record"](incident_id="inc-1", text="incident-merge: merged")
+        return _MERGED
+
+    merge.side_effect = merged
     monkeypatch.setattr(bindings, "call_authority", authority)
     ledger = _ledger_root(tmp_path=tmp_path)
-    status = _go(tmp_path=tmp_path, ledger_root=ledger)
+    status = _go(tmp_path=tmp_path, ledger_root=ledger, run_text_command=run_text_command)
     _ = merge.call_args.kwargs["chain"](incident_id="inc-1")
     call = authority.call_args.kwargs
+    ledger_call = run_text_command.call_args.kwargs
     facts = [
         status == 0,
         call["cwd"] == ledger,
         call["flags"]["repo"] == str(ledger),
         str(tmp_path / "reference") not in {str(call["cwd"]), call["flags"]["repo"]},
+        ledger_call.get("cwd") == ledger,
     ]
     assert all(facts)
 
@@ -214,7 +221,7 @@ def test_the_role_installs_the_connection_block_and_a_rooted_pointer_beside_the_
         str(pointer_copy.get("dest", "")).endswith("/.beads/metadata.json"),
         (pointer_copy.get("owner"), pointer_copy.get("mode")) == ("root", "0644"),
         "incident_observer_tenant_project_id" in str(pointer_copy.get("content", "")),
-        "| int" in str(pointer_copy.get("content", "")),
+        "dolt_server_port" not in str(pointer_copy.get("content", "")),
         "incident_observer_merge_workdir" in str(pointer_copy.get("dest", "")),
         directories.get("ansible.builtin.file", {}).get("owner") == "root",
     ]
