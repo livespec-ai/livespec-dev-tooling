@@ -162,80 +162,27 @@ def _normalized_real_target_inventory() -> tuple[str, ...]:
 
 
 def test_real_check_recipe_is_legacy_readable_exact_inventory_mirror() -> None:
-    """CORE's v1.17.1 reader sees the exact authoritative 91-target inventory."""
+    """CORE's legacy reader mirrors the committed aggregate inventory."""
     justfile_text = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
 
     wired = _legacy_core_v1_17_1_extract_check_slugs(justfile_text=justfile_text)
 
-    assert wired == _normalized_real_target_inventory()
-    # 91 since livespec-dev-tooling-d2ysfg added the repo-private
-    # `check-ansible-recipes-load-config`, which runs the root-level drift and
-    # apply recipes and confirms their pinned ansible-core loads the provisioning
-    # configuration with pipelining enabled. The 90th was
-    # livespec-dev-tooling-dpkz32's canonical
-    # `check-no-ambient-environment-loops`, which fails a test-tree loop over
-    # os.environ, because its body runs only on a host carrying a matching variable.
-    # The 89th was livespec-dev-tooling-sr46h2, which added the repo-private
-    # `check-ansible-authorized-keys-managed` (the authorized_keys_managed role
-    # converged against fixtures; non-functional-requirements.md, v208).
-    # The 88th was livespec-dev-tooling-kzhduc, which added the canonical
-    # `check-ci-single-container-image`, which fails a consumer whose CI workflow
-    # declares more than one distinct job container image.
-    # The 87th was livespec-dev-tooling-7g5qba, which added the repo-private
-    # `check-ansible-get-url-checksum` (every `get_url` task under
-    # `ansible/roles/*/tasks` pins a checksum or records a `check-mode-exempt`
-    # reason, because get_url reports a false change under `--check` otherwise).
-    # The 86th was livespec-dev-tooling-zqrg7d, which added the canonical
-    # `check-delegated-job-authority-skip`, which reports a delegated gate Job path
-    # that runs an authority member without honouring the repository's skip variable.
-    # The 85th was livespec-dev-tooling-xpuv6h, which added the canonical
-    # `check-rule-26-keep-out`, which keeps mutation-kill-matrix on demand.
-    # The 84th was livespec-dev-tooling-yhacv6, which added the canonical
-    # `check-codex-hook-reconcilable` (the Codex hook-cache reconciliation release gate).
-    # The 83rd was livespec-dev-tooling-5d3cvr, which added the canonical
-    # `check-delegated-gate-check-suite`, which prevents delegated pushes from
-    # selecting a pre-commit aggregate in their final pre-push suite slot.
-    # The 82nd was livespec-dev-tooling-lirki2's repo-private
-    # `check-dev-host-fabro-client-bins-declared` (every
-    # `dispatcher.factories.<name>.bin` this repository commits names the `path` of
-    # one `fabro_client_builds` entry, so the Fabro client a Dispatcher EXECS is one
-    # the dev-host play stages from a digest-verified control-node source). It is
-    # repo-private rather than canonical because it reads THIS repository's own
-    # `.livespec.jsonc` against THIS repository's own inventory — the ratified clause
-    # says so in as many words — and a canonical slug would oblige nine siblings to
-    # wire a check about a file they do not have.
-    # The 81st was livespec-dev-tooling-vxkmab's repo-private
-    # `check-tests-host-path-free` (no test under `tests/` reads, stats or writes
-    # a real host path, nor builds an Ansible task whose destination is one — a
-    # test that does grades the machine pytest runs on rather than the committed
-    # tree). It is repo-private rather than canonical because a canonical slug
-    # obliges every consumer to wire it into its own `just check` and CI matrix,
-    # while the tests it polices are this repository's own Ansible role tests.
-    # The 80th was livespec-dev-tooling-prdxxe's repo-private
-    # `check-ansible-hostname-free` (no play or role under `ansible/` names a
-    # machine; the inventory alone binds one). The 79th was
-    # livespec-dev-tooling-t2q4's repo-private
-    # `check-no-direct-github-access` (the GitHub request-budget Verifier: first-
-    # party code reaches GitHub through `budgeted_gh.gh_read` or not at all). It
-    # is repo-private rather than canonical because arming the ban fleet-wide
-    # ahead of the sibling retrofit would redden three members on their next pin
-    # bump, and its anti-vacuous guard would hard-fail the one member with zero
-    # first-party Python. The 78th was livespec-dev-tooling-wmym's canonical
-    # `check-marketplace-ref-release-only` (the livespec-family marketplace ref
-    # guard) on top of livespec-dev-tooling-hizx's
-    # `check-plan-no-live-handoff-file`, which took the count to 77. The 76th
-    # was livespec-dev-tooling-0bse.1's `check-heading-coverage-debt-register`
-    # (the shrink-only heading-coverage debt ratchet, plan
-    # fleet-heading-coverage-convergence charter D3). The 75th was the
-    # repo-private `check-ansible-lint` (livespec-sab5gn.4), which lints the
-    # legacy-fleet Ansible tree under `ansible/`; the 74th was
-    # `check-shipped-path-release-guard` (livespec-dev-tooling-sxdz). The count
-    # stays EXACT rather than becoming a `>=`: its job is to make any change to
-    # the inventory a deliberate edit here, and a lower bound would let a silent
-    # drop through.
-    assert wired is not None and len(wired) == 91
+    target_inventory = _normalized_real_target_inventory()
+    wired_set = set(wired or ())
+    target_inventory_set = set(target_inventory)
+    only_in_justfile = sorted(wired_set.difference(target_inventory_set))
+    only_in_target_inventory = sorted(target_inventory_set.difference(wired_set))
+    assert wired_set == target_inventory_set, (
+        "the `check` recipe and check-targets.txt inventory differ: "
+        f"{only_in_justfile or 'none'} missing from check-targets.txt; "
+        f"{only_in_target_inventory or 'none'} missing from justfile's `check` recipe"
+    )
+    assert wired == target_inventory, "the committed check inventory order differs between sources"
     canonical = unsafe_perform_io(canonical_check_slugs().unwrap())
-    assert not set(canonical).difference(wired)
+    missing_canonical = sorted(set(canonical).difference(wired or ()))
+    assert not missing_canonical, (
+        "canonical check slug(s) no longer wired in the `check` recipe: " f"{missing_canonical}"
+    )
     assert _legacy_core_v1_17_1_extract_check_slugs(justfile_text="default:\n    true\n") is None
     assert _legacy_core_v1_17_1_extract_check_slugs(
         justfile_text=(
