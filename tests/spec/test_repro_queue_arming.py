@@ -74,15 +74,60 @@ def test_every_repro_flavor_is_disarmed_or_admits_one_gate_of_at_most_two_units(
 
 
 def test_every_repro_flavor_is_pinned_to_its_node_by_hostname() -> None:
-    """Each flavor selects one hostname, and the four gate nodes each have a flavor."""
+    """Each flavor selects one hostname, and exactly the two armed nodes have a flavor."""
     flavors = [
         d
         for d in _documents(name="cluster-queue-repro-gates.yaml")
         if d["kind"] == "ResourceFlavor"
     ]
     hosts = {str(f["spec"]["nodeLabels"]["kubernetes.io/hostname"]) for f in flavors}
-    expected = {"gamingpc-xubuntu", "poweredge-xubuntu", "gmktec-xubuntu", "hp-xubuntu"}
+    expected = {"poweredge-xubuntu", "gmktec-xubuntu"}
     assert hosts == expected, hosts
+
+
+_RETIRED = ("gates-repro-gamingpc-flavor", "gates-repro-hp-flavor")
+_CONVERGE = (
+    Path(__file__).resolve().parents[2]
+    / "ci-runner"
+    / "k3s"
+    / "phase2"
+    / "reconstruct"
+    / "converge-ci-stack.sh"
+)
+
+
+def test_the_retired_gamingpc_and_hp_repro_flavors_are_neither_defined_nor_listed() -> None:
+    """No ResourceFlavor and no ClusterQueue quota entry names a retired repro flavor."""
+    documents = _documents(name="cluster-queue-repro-gates.yaml")
+    defined = {str(d["metadata"]["name"]) for d in documents if d["kind"] == "ResourceFlavor"}
+    assert not defined & set(_RETIRED), defined
+    assert not set(_repro_quotas()) & set(_RETIRED), _repro_quotas()
+
+
+def test_the_converge_deletes_the_retired_repro_flavors_after_applying_the_queue() -> None:
+    """The delete follows the cluster-queue apply loop and tolerates a flavor already gone.
+
+    A flavor a ClusterQueue still lists cannot be deleted, so the delete must come after
+    the loop that applies the edited gates-repro-cq, and a second run must not fail.
+    """
+    lines = _CONVERGE.read_text(encoding="utf-8").splitlines()
+    applied = [i for i, line in enumerate(lines) if line.strip() == 'kubectl apply -f "$f"']
+    deleted = [
+        i
+        for i, line in enumerate(lines)
+        if line.startswith("kubectl delete resourceflavor") and "--ignore-not-found" in line
+    ]
+    assert applied, "the cluster-queue apply loop is gone"
+    assert len(deleted) == 1, deleted
+    assert all(name in lines[deleted[0]] for name in _RETIRED), lines[deleted[0]]
+    assert deleted[0] > max(applied), (applied, deleted)
+
+
+def test_the_node_budget_names_no_repro_lane_for_a_retired_flavor() -> None:
+    """gamingpc-xubuntu and hp-xubuntu carry no repro_cpu once their flavors are retired."""
+    nodes: dict[str, dict[str, Any]] = yaml.safe_load(_BUDGET.read_text(encoding="utf-8"))["nodes"]
+    assert "repro_cpu" not in nodes["gamingpc-xubuntu"], nodes["gamingpc-xubuntu"]
+    assert "repro_cpu" not in nodes["hp-xubuntu"], nodes["hp-xubuntu"]
 
 
 _BUDGET = (

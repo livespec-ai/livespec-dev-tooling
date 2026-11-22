@@ -618,6 +618,15 @@ for f in "${KUEUE_DIR}"/cluster-queue-*.yaml; do
   [ -e "$f" ] || { echo "FATAL: no cluster-queue-*.yaml found in ${KUEUE_DIR}"; exit 1; }
   kubectl apply -f "$f"
 done
+# RETIRED REPRO FLAVORS (livespec-dev-tooling-nkocp5, plan gate-job-resources,
+# spec v261). The converge applies files and never prunes, and the repro
+# ClusterQueue no longer lists these two ResourceFlavors, so they would live on
+# in the cluster unused. Delete them HERE, AFTER the loop above has applied the
+# edited gates-repro-cq: a flavor a ClusterQueue still lists cannot be deleted,
+# and the queue apply is what stops listing them. --ignore-not-found keeps a
+# second run (and a fresh cluster that never had them) from failing on their
+# absence.
+kubectl delete resourceflavor gates-repro-gamingpc-flavor gates-repro-hp-flavor --ignore-not-found
 # The container-worker queues, whose quota is the enrolled workers' derived
 # churn slots read from the Nodes (livespec-dev-tooling-ko26ez.7).
 "${KUEUE_DIR}/converge-worker-queues.sh"
