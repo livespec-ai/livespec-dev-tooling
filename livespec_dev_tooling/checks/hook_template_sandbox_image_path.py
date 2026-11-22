@@ -85,13 +85,17 @@ def _arguments(*, lines: list[str]) -> dict[str, str]:
 def _expand(*, value: str, arguments: dict[str, str], path: tuple[str, ...]) -> str:
     """Expand Docker ARGs and the inherited PATH in one Dockerfile value."""
 
-    def replace(match: re.Match[str]) -> str:
-        name = match["braced"] or match["bare"]
-        if name == "PATH":
-            return ":".join(path)
-        return arguments.get(name, match.group(0))
+    return _VARIABLE.sub(
+        lambda match: _replacement(match=match, arguments=arguments, path=path), value
+    )
 
-    return _VARIABLE.sub(replace, value)
+
+def _replacement(*, match: re.Match[str], arguments: dict[str, str], path: tuple[str, ...]) -> str:
+    """Expand one Dockerfile variable reference from a PATH assignment."""
+    name = match["braced"] or match["bare"]
+    if name == "PATH":
+        return ":".join(path)
+    return arguments.get(name, match.group(0))
 
 
 def _read_dockerfile(*, path: Path) -> _Dockerfile | None:
