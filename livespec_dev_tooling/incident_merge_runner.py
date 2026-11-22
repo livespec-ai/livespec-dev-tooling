@@ -195,7 +195,7 @@ def run(  # noqa: PLR0913 — every host dependency is an injected seam.
     if isinstance(ready, int):
         return ready
     gating = make_reader(token=ready.forge.token)
-    ledger = ledger_recorder(run=run_text_command)
+    ledger = ledger_recorder(run=run_text_command, cwd=ready.ledger_root)
     written: list[str] = []
 
     def record(*, incident_id: str, text: str) -> None:

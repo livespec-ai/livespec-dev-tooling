@@ -40,7 +40,8 @@ def _genesis(*, item: str = "inc-1", repository: str = _REPOSITORY) -> dict[str,
 
 
 def _runner(*, status: str = "active", comments: list[dict[str, str]] | None = None):
-    def run(*, argv):
+    def run(*, argv, cwd=None):
+        _ = cwd
         if "show" in argv:
             return 0, json.dumps([{"id": "inc-1", "status": status}])
         return 0, json.dumps(comments if comments is not None else [_genesis()])
@@ -97,7 +98,8 @@ def test_an_unreadable_ledger_refuses_by_name(monkeypatch):
 
 
 def _answers(*, show: str, comments: str):
-    def run(*, argv):
+    def run(*, argv, cwd=None):
+        _ = cwd
         return 0, show if "show" in argv else comments
 
     return Mock(side_effect=run)

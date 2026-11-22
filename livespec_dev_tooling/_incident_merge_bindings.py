@@ -87,7 +87,7 @@ _QUERY = (
 class TextRunner(Protocol):
     """Runs one fixed argv and reports its exit status with its output (or why it never ran)."""
 
-    def __call__(self, *, argv: Sequence[str]) -> tuple[int, str]: ...
+    def __call__(self, *, argv: Sequence[str], cwd: Path | None = None) -> tuple[int, str]: ...
 
 
 class LedgerWriteError(Exception):
@@ -109,11 +109,16 @@ class ArmIdentity:
     owner: str
 
 
-def run_text(*, argv: Sequence[str]) -> tuple[int, str]:
+def run_text(*, argv: Sequence[str], cwd: Path | None = None) -> tuple[int, str]:
     """Run one fixed argv without a shell; (-1, reason) when it could not run to an exit."""
     try:
         done = subprocess.run(  # noqa: S603 — fixed argv built here; no shell.
-            list(argv), capture_output=True, text=True, timeout=_TIMEOUT_SECONDS, check=False
+            list(argv),
+            capture_output=True,
+            text=True,
+            timeout=_TIMEOUT_SECONDS,
+            check=False,
+            cwd=cwd,
         )
     except (OSError, subprocess.SubprocessError) as unusable:
         return -1, f"{type(unusable).__name__}: {unusable}"
@@ -151,9 +156,9 @@ def _object(*, value: object) -> dict[str, Any] | None:
     return cast("dict[str, Any]", value) if isinstance(value, dict) else None
 
 
-def _ledger_json(*, run: TextRunner, argv: Sequence[str]) -> object:
+def _ledger_json(*, run: TextRunner, argv: Sequence[str], cwd: Path) -> object:
     """The JSON the ledger answered for one fixed argv, or None when it did not answer one."""
-    code, text = run(argv=[_WRAPPER, "--", "bd", *argv])
+    code, text = run(argv=[_WRAPPER, "--", "bd", *argv], cwd=cwd)
     if code != 0:
         return None
     try:
@@ -219,8 +224,8 @@ def authority_chain_reader(
         chain = _object(value=reply.unwrap()) if isinstance(reply, Success) else None
         if chain is None:
             return reply
-        shown = _ledger_json(run=run, argv=["show", incident_id, "--json"])
-        comments = _ledger_json(run=run, argv=["comments", incident_id, "--json"])
+        shown = _ledger_json(run=run, argv=["show", incident_id, "--json"], cwd=repo)
+        comments = _ledger_json(run=run, argv=["comments", incident_id, "--json"], cwd=repo)
         listed = cast("list[object]", shown) if isinstance(shown, list) else []
         record = _object(value=listed[0]) if listed else None
         if record is None or not isinstance(comments, list):
@@ -259,11 +264,13 @@ def graphql_queue_reader(*, read: ForgeReader) -> QueueEntries:
     return queue
 
 
-def ledger_recorder(*, run: TextRunner = run_text) -> IncidentRecorder:
+def ledger_recorder(*, run: TextRunner = run_text, cwd: Path | None = None) -> IncidentRecorder:
     """One ledger comment on the incident work item, through the credential wrapper."""
 
     def record(*, incident_id: str, text: str) -> None:
-        code, detail = run(argv=[_WRAPPER, "--", "bd", "comment", incident_id, text])
+        code, detail = run(
+            argv=[_WRAPPER, "--", "bd", "comment", incident_id, text], cwd=cwd
+        )
         if code != 0:
             raise LedgerWriteError(incident_id=incident_id, code=code, detail=detail)
 
