@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from livespec_dev_tooling.budgeted_gh import GhRead
 from livespec_dev_tooling.checks import branch_protection_alignment, master_ci_green
-from livespec_dev_tooling.checks._gate_context import GATE_CONTEXT_ENV
+from livespec_dev_tooling.checks._gate_context import GATE_CONTEXT_ENV, GATE_PREVIEW_ENV
 
 if TYPE_CHECKING:
     import pytest
@@ -44,6 +44,12 @@ def _unreadable_master_ci(*, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(master_ci_green, "gh_read", lambda **_kwargs: _failed_read(stderr=""))
 
 
+def _stage_strict_gate(*, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Declare a real gate, not the surrounding factory's non-authorizing preview."""
+    monkeypatch.setenv(GATE_CONTEXT_ENV, "1")
+    monkeypatch.delenv(GATE_PREVIEW_ENV, raising=False)
+
+
 def test_master_ci_green_passes_without_a_credential_outside_a_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -57,7 +63,7 @@ def test_master_ci_green_fails_without_a_credential_inside_a_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The whole point: the tree is not called green by a run that never looked."""
-    monkeypatch.setenv(GATE_CONTEXT_ENV, "1")
+    _stage_strict_gate(monkeypatch=monkeypatch)
     _unreadable_master_ci(monkeypatch=monkeypatch)
     assert master_ci_green.main() == 1
 
@@ -66,7 +72,7 @@ def test_master_ci_green_fails_on_a_rejected_credential_inside_a_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A credential that exists but is refused is no better than none, in a gate."""
-    monkeypatch.setenv(GATE_CONTEXT_ENV, "1")
+    _stage_strict_gate(monkeypatch=monkeypatch)
     monkeypatch.setattr(master_ci_green, "_gh_has_stored_credential", lambda: True)
     monkeypatch.setattr(
         master_ci_green,
@@ -105,6 +111,7 @@ def test_branch_protection_exits_zero_when_it_cannot_read_outside_a_gate(
 ) -> None:
     """The developer-laptop case: an unreadable protection state is not a failure."""
     monkeypatch.delenv(GATE_CONTEXT_ENV, raising=False)
+    monkeypatch.delenv(GATE_PREVIEW_ENV, raising=False)
     _stage_unreadable_protection(monkeypatch=monkeypatch, tmp_path=tmp_path)
     assert branch_protection_alignment.main() == 0
 
@@ -114,6 +121,6 @@ def test_branch_protection_fails_when_it_cannot_read_inside_a_gate(
     tmp_path: Path,
 ) -> None:
     """The whole point: no pass reported from a gate that never read protection."""
-    monkeypatch.setenv(GATE_CONTEXT_ENV, "1")
+    _stage_strict_gate(monkeypatch=monkeypatch)
     _stage_unreadable_protection(monkeypatch=monkeypatch, tmp_path=tmp_path)
     assert branch_protection_alignment.main() == 1
