@@ -206,7 +206,21 @@ spec:
       policy: Never
     withinClusterQueue: Never
   resourceGroups:
-    - coveredResources: ["cpu", "memory"]
+    - coveredResources: ["cpu", "memory", "ephemeral-storage"]
+      # EPHEMERAL-STORAGE IS COVERED (2026-11-22, plan gate-job-resources, tsde55
+      # ordering fix). A Workload that requests a resource no resource group
+      # covers is NEVER admitted ("resource ephemeral-storage unavailable in
+      # ClusterQueue"), and this queue is StrictFIFO, so on 2026-11-21 one gate Job
+      # that requested ephemeral-storage held every later gate in the fleet Pending
+      # for about 20 minutes. ORDER: this manifest is applied through the committed
+      # converge BEFORE any gate client requests ephemeral-storage. Each flavor's
+      # ephemeral-storage quota is its concurrent gate count x the 2560Mi gate
+      # request (peak 1.62 GiB measured 2026-11-21 x 1.25, rounded up to 0.5 GiB;
+      # ci-runner/k3s/phase2/EPHEMERAL-STORAGE.md on tsde55). Allocatable read
+      # 2026-11-22: gmktec-xubuntu 434.4 GiB, hp-xubuntu 411.5 GiB, poweredge-xubuntu
+      # 186.0 GiB, gamingpc-xubuntu unreadable (NotReady), so no quota exceeds a
+      # node's disk. The pre-submit check in the gate client now refuses a Job whose
+      # requests this list does not cover.
       # FLAVOR ORDER IS PLACEMENT PREFERENCE. Kueue tries these flavors in
       # list order and admits on the first whose node has room, so the first
       # entry receives most gates. Admission sees REQUESTS only, and CI runner
@@ -294,6 +308,8 @@ spec:
               nominalQuota: 10
             - name: "memory"
               nominalQuota: 16Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 5Gi
         - name: gates-flavor
           resources:
             # Two concurrent gates, two gate units of 5 cpu / 8 Gi (2026-11-14,
@@ -307,6 +323,8 @@ spec:
               nominalQuota: 10
             - name: "memory"
               nominalQuota: 16Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 5Gi
         - name: gates-hp-flavor
           resources:
             # One concurrent gate, one gate unit of 5 cpu / 8 Gi (2026-11-12,
@@ -333,6 +351,8 @@ spec:
               nominalQuota: 0
             - name: "memory"
               nominalQuota: 0Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 0Gi
         - name: gates-poweredge-flavor
           resources:
             # Four concurrent gates, four gate units of 5 cpu / 8 Gi (2026-11-14,
@@ -355,6 +375,8 @@ spec:
               nominalQuota: 30
             - name: "memory"
               nominalQuota: 48Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 15Gi
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: WorkloadPriorityClass

@@ -68,7 +68,9 @@ def test_gates_cluster_queue_has_a_quota_lane_for_each_pool_node() -> None:
     assert sorted(flavor["name"] for flavor in queue_flavors) == sorted(flavors)
     for flavor in queue_flavors:
         quota = {resource["name"]: resource["nominalQuota"] for resource in flavor["resources"]}
-        assert set(quota) == {"cpu", "memory"}
+        assert set(quota) == {"cpu", "memory", "ephemeral-storage"}
+        assert isinstance(quota["ephemeral-storage"], str)
+        assert quota["ephemeral-storage"].endswith(("Gi", "Mi"))
         assert isinstance(quota["cpu"], int) and quota["cpu"] >= 0
         assert isinstance(quota["memory"], str) and quota["memory"].endswith("Gi")
         memory = int(quota["memory"].removesuffix("Gi"))
