@@ -165,7 +165,12 @@ def _recorded_events() -> tuple[list[dict[str, Any]], Callable[..., None]]:
     events: list[dict[str, Any]] = []
 
     def _emit(
-        *, outcome: str, repository: str | None, tree_hash: str | None, job_name: str | None
+        *,
+        outcome: str,
+        repository: str | None,
+        tree_hash: str | None,
+        job_name: str | None,
+        stage: str,
     ) -> None:
         events.append(
             {
@@ -173,6 +178,7 @@ def _recorded_events() -> tuple[list[dict[str, Any]], Callable[..., None]]:
                 "repository": repository,
                 "tree_hash": tree_hash,
                 "job_name": job_name,
+                "stage": stage,
             }
         )
 
@@ -250,7 +256,11 @@ def test_each_gate_outcome_is_one_span_carrying_the_runs_gate_identity() -> None
         telemetry.GATE_OUTCOME_NO_VERDICT,
     ):
         payload = telemetry.build_span_payload(
-            outcome=outcome, repository=_REPOSITORY, tree_hash=_TREE, job_name=_JOB
+            outcome=outcome,
+            repository=_REPOSITORY,
+            tree_hash=_TREE,
+            job_name=_JOB,
+            stage="pre-push",
         )
 
         assert _attributes_of(payload=payload) == {
@@ -258,6 +268,7 @@ def test_each_gate_outcome_is_one_span_carrying_the_runs_gate_identity() -> None
             "livespec.gate.repository": _REPOSITORY,
             "livespec.gate.tree_hash": _TREE,
             "livespec.gate.job_name": _JOB,
+            "livespec.gate.stage": "pre-push",
         }
 
 
@@ -328,10 +339,12 @@ def test_a_value_the_run_never_determined_is_absent_rather_than_guessed() -> Non
         repository=None,
         tree_hash=None,
         job_name=None,
+        stage="pre-push",
     )
 
     assert _attributes_of(payload=payload) == {
-        "livespec.gate.outcome": telemetry.GATE_OUTCOME_NO_VERDICT
+        "livespec.gate.outcome": telemetry.GATE_OUTCOME_NO_VERDICT,
+        "livespec.gate.stage": "pre-push",
     }
 
 
@@ -391,6 +404,7 @@ def test_the_receiver_is_the_configured_endpoint_or_the_hosts_loopback_collector
         repository=_REPOSITORY,
         tree_hash=_TREE,
         job_name=_JOB,
+        stage="pre-push",
     )
     monkeypatch.setenv(telemetry.ENDPOINT_ENV, "http://configured:4319")
     telemetry.emit_gate_outcome(
@@ -398,6 +412,7 @@ def test_the_receiver_is_the_configured_endpoint_or_the_hosts_loopback_collector
         repository=_REPOSITORY,
         tree_hash=_TREE,
         job_name=_JOB,
+        stage="pre-push",
     )
 
     assert telemetry.DEFAULT_ENDPOINT == "http://127.0.0.1:4319"
@@ -445,6 +460,7 @@ def test_a_delegated_gate_run_that_reaches_no_verdict_emits_a_no_verdict_event(
             "repository": _REPOSITORY,
             "tree_hash": _TREE,
             "job_name": None,
+            "stage": "pre-push",
         }
     ]
 
@@ -479,6 +495,7 @@ def test_a_run_that_submitted_no_gate_at_all_still_emits_exactly_one_event(
             "repository": None,
             "tree_hash": None,
             "job_name": None,
+            "stage": "pre-push",
         }
     ]
 
@@ -515,12 +532,14 @@ def test_a_green_gate_emits_passed_and_a_red_tree_emits_failed_tree(*, tmp_path:
             "repository": _REPOSITORY,
             "tree_hash": _TREE,
             "job_name": _JOB,
+            "stage": "pre-push",
         },
         {
             "outcome": telemetry.GATE_OUTCOME_FAILED_TREE,
             "repository": _REPOSITORY,
             "tree_hash": _TREE,
             "job_name": _JOB,
+            "stage": "pre-push",
         },
     ]
 

@@ -180,9 +180,6 @@ _AUTHORITY_SKIP_STEP = "resolve-authority-skip"
 # so a state nobody has enumerated cannot become a pass — and this table keeps
 # that same asymmetry, so a new state is reported as "nothing was decided"
 # rather than silently acquiring one of the two decided words.
-_GATE_OUTCOMES = {GATE_PASSED: GATE_OUTCOME_PASSED, GATE_FAILED: GATE_OUTCOME_FAILED_TREE}
-
-
 # What an OPTED-IN repository says when the host it is being pushed from holds no
 # readable gates credential. Printed rather than left silent because an opted-in
 # repository that quietly gates somewhere else is the one shape an operator
@@ -350,8 +347,7 @@ def run_delegated_gate(
     the narration. `gate_credential.with_wrapper_notices` carries why a refresh
     that WORKED used to leave no trace at all.
     """
-    runner = with_wrapper_notices(runner=runner)
-    built = gate_remote_request(repo_root=repo_root, renderer=renderer, runner=runner)
+    built = gate_remote_request(repo_root=repo_root, renderer=renderer, runner=(runner := with_wrapper_notices(runner=runner)))  # noqa: E501
     if isinstance(built, Failure):
         failure = built.failure()
         # The assembly's failure track carries the step that could not be
@@ -359,14 +355,19 @@ def run_delegated_gate(
         # event carries the outcome alone. Absent, per the contract, rather
         # than re-derived here: a second read of a repository whose first read
         # has just failed is a guess dressed as a measurement.
-        emit(outcome=GATE_OUTCOME_NO_VERDICT, repository=None, tree_hash=None, job_name=None)
+        emit(
+            outcome=GATE_OUTCOME_NO_VERDICT,
+                repository=None,
+                tree_hash=None,
+                job_name=None,
+                stage="pre-push",
+        )
         return GateVerdict(
             state=GATE_NO_VERDICT,
             detail=assembly_refusal(failure=failure),
             token_written=False,
         )
-    request = built.unwrap()
-    tree_hash = gate_ref_tree_hash(gate_ref=request.gate_ref)
+    tree_hash = gate_ref_tree_hash(gate_ref=(request := built.unwrap()).gate_ref)
     # The authority half, BEFORE the Job is submitted — the contract's own
     # "before or beside". A member that declares it reads an authorization held
     # outside the tree cannot be answered inside the Job, which is handed none,
@@ -392,10 +393,11 @@ def run_delegated_gate(
     # is what the contract's Telemetry bullet requires of every green verdict on
     # which the push is still refused.
     emit(
-        outcome=_GATE_OUTCOMES.get(verdict.state, GATE_OUTCOME_NO_VERDICT),
+        outcome={GATE_PASSED: GATE_OUTCOME_PASSED, GATE_FAILED: GATE_OUTCOME_FAILED_TREE}.get(verdict.state, GATE_OUTCOME_NO_VERDICT),  # noqa: E501
         repository=request.mirror_url.rsplit("/", maxsplit=1)[-1].removesuffix(".git"),
         tree_hash=tree_hash,
         job_name=verdict.job_name,
+        stage="pre-push",
     )
     # A Job verdict that already refuses is returned AS ITSELF. The push is
     # refused either way, and the gate's own answer — a red tree, a lost cluster
@@ -404,9 +406,7 @@ def run_delegated_gate(
     # A PASSED verdict is joined even when it carries no token: the join is what
     # names the authority refusal, and it leaves a passed verdict alone when
     # nothing was refused.
-    if verdict.state != GATE_PASSED:
-        return verdict
-    return host_authority_decision(verdict=verdict, ran=ran)
+    return verdict if verdict.state != GATE_PASSED else host_authority_decision(verdict=verdict, ran=ran)  # noqa: E501
 
 
 @IncidentEntrance(surface="gate-remote-delegate")
