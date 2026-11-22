@@ -16,6 +16,7 @@ claude_code_hooks_home: "{{ ansible_facts['user_dir'] }}"
 
 claude_code_hooks_dir: "{{ claude_code_hooks_home }}/.claude/hooks"
 claude_code_hooks_guard_dest: "{{ claude_code_hooks_dir }}/tmux-fleet-guard.py"
+claude_code_hooks_mailbox_read_dest: "{{ claude_code_hooks_dir }}/mailbox-seat-read-hook.py"
 claude_code_hooks_settings: "{{ claude_code_hooks_home }}/.claude/settings.json"
 
 # The command string written into settings.json. It must match what the
@@ -23,6 +24,7 @@ claude_code_hooks_settings: "{{ claude_code_hooks_home }}/.claude/settings.json"
 # already-wired test below recognises an existing entry by the guard's filename
 # appearing inside this string.
 claude_code_hooks_command: "python3 {{ claude_code_hooks_guard_dest }}"
+claude_code_hooks_mailbox_read_command: "python3 {{ claude_code_hooks_mailbox_read_dest }}"
 
 # The Claude Code tool name the hook fires on. Only Bash commands can carry a
 # tmux invocation, so widening this would cost a subprocess on every tool call

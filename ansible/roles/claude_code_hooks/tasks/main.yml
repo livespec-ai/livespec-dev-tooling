@@ -52,6 +52,15 @@
     mode: "0755"
   become: false
 
+- name: Install the mailbox seat-read hook
+  ansible.builtin.copy:
+    src: mailbox-seat-read-hook.py
+    dest: "{{ claude_code_hooks_mailbox_read_dest }}"
+    owner: "{{ claude_code_hooks_owner }}"
+    group: "{{ claude_code_hooks_group }}"
+    mode: "0755"
+  become: false
+
 - name: Prove the installed guard still blocks what it must
   # This is the installer's refuse-to-wire-a-broken-guard gate, kept as a
   # command because no module can assert it: the corpus lives inside the script.
@@ -89,10 +98,10 @@
   when: claude_code_hooks_settings_stat.stat.exists
   no_log: true
 
-- name: Decide whether the guard is already wired
-  # The installer appends its entry only when no PreToolUse hook already names
-  # the guard, and leaves the file byte-identical otherwise. That test is
-  # reproduced here rather than rendering the whole file from a template,
+- name: Decide whether the hooks are already wired
+  # Each installer entry is appended only when its own event has no command
+  # naming it, and the role leaves the file byte-identical otherwise. That
+  # test is reproduced here rather than rendering the whole file from a template,
   # because settings.json is written by Claude Code itself and by several other
   # installers on this host; a template would silently discard their keys on
   # every converge.
@@ -101,19 +110,24 @@
   # object, and so does this.
   ansible.builtin.set_fact:
     claude_code_hooks_settings_data: "{{ _claude_code_hooks_current }}"
-    claude_code_hooks_wired: "{{ 'tmux-fleet-guard.py' in _claude_code_hooks_commands }}"
+    claude_code_hooks_wired: "{{ 'tmux-fleet-guard.py' in _claude_code_hooks_pre_tool_use_commands }}"
+    claude_code_hooks_mailbox_read_wired: "{{ 'mailbox-seat-read-hook.py' in _claude_code_hooks_user_prompt_submit_commands }}"
   become: false
   no_log: true
   vars:
     _claude_code_hooks_current: >-
       {{ (claude_code_hooks_settings_raw.content | b64decode | from_json)
          if claude_code_hooks_settings_stat.stat.exists else {} }}
-    _claude_code_hooks_commands: >-
+    _claude_code_hooks_pre_tool_use_commands: >-
       {{ ((_claude_code_hooks_current.hooks | default({})).PreToolUse | default([]))
          | map(attribute='hooks', default=[]) | flatten
          | map(attribute='command', default='') | join(' ') }}
+    _claude_code_hooks_user_prompt_submit_commands: >-
+      {{ ((_claude_code_hooks_current.hooks | default({})).UserPromptSubmit | default([]))
+         | map(attribute='hooks', default=[]) | flatten
+         | map(attribute='command', default='') | join(' ') }}
 
-- name: Wire the PreToolUse Bash guard into the Claude Code settings
+- name: Wire the Claude Code hooks into the Claude Code settings
   # no_log for the same reason the slurp has it: `content` is the entire
   # settings file, so an Ansible diff of this task would print every secret in
   # the env block to the terminal and to any log capturing the run.
@@ -137,16 +151,27 @@
     backup: true
   become: false
   no_log: true
-  when: not claude_code_hooks_wired
+  when: not claude_code_hooks_wired or not claude_code_hooks_mailbox_read_wired
   vars:
-    _claude_code_hooks_entry:
+    _claude_code_hooks_guard_entry:
       matcher: "{{ claude_code_hooks_matcher }}"
       hooks:
         - type: command
           command: "{{ claude_code_hooks_command }}"
+    _claude_code_hooks_mailbox_read_entry:
+      hooks:
+        - type: command
+          command: "{{ claude_code_hooks_mailbox_read_command }}"
     _claude_code_hooks_hooks: "{{ claude_code_hooks_settings_data.hooks | default({}) }}"
+    _claude_code_hooks_pre_tool_use: >-
+      {{ (_claude_code_hooks_hooks.PreToolUse | default([]))
+         + ([] if claude_code_hooks_wired else [_claude_code_hooks_guard_entry]) }}
+    _claude_code_hooks_user_prompt_submit: >-
+      {{ (_claude_code_hooks_hooks.UserPromptSubmit | default([]))
+         + ([] if claude_code_hooks_mailbox_read_wired
+            else [_claude_code_hooks_mailbox_read_entry]) }}
     _claude_code_hooks_next: >-
       {{ claude_code_hooks_settings_data
          | combine({'hooks': _claude_code_hooks_hooks
-                    | combine({'PreToolUse': (_claude_code_hooks_hooks.PreToolUse | default([]))
-                               + [_claude_code_hooks_entry]})}) }}
+                    | combine({'PreToolUse': _claude_code_hooks_pre_tool_use,
+                               'UserPromptSubmit': _claude_code_hooks_user_prompt_submit})}) }}
