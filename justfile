@@ -303,6 +303,7 @@ check:
         check-handoff-dispatch-routing
         check-heading-coverage
         check-heading-coverage-debt-register
+        check-hook-template-sandbox-image-path
         check-hook-trees-not-io-exempt
         check-keyword-only-args
         check-local-memory-drift-audit
@@ -1338,6 +1339,9 @@ check-shell-quality:
 
 check-skill-invocation-paths:
     uv run python -m livespec_dev_tooling.checks.skill_invocation_paths
+
+check-hook-template-sandbox-image-path:
+    uv run python -m livespec_dev_tooling.checks.hook_template_sandbox_image_path
 
 check-hook-trees-not-io-exempt:
     uv run python -m livespec_dev_tooling.checks.hook_trees_not_io_exempt
