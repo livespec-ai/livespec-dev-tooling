@@ -266,8 +266,8 @@ def incident_chain_state(item_id, command):
         done = subprocess.run(argv, capture_output=True, text=True, timeout=INCIDENT_CALL_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         return "unreadable", "incident-authority-timeout"
-    except Exception:
-        return "unreadable", "incident-authority-unavailable"
+    except Exception as error:
+        return "unreadable", f"incident-authority-unavailable ({type(error).__name__}: {error})"
     if done.returncode not in (0, INCIDENT_REFUSED_EXIT):
         return "unreadable", "incident-authority-exit"
     try:

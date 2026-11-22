@@ -218,6 +218,17 @@ def test_a_call_that_times_out_prints_unreadable_and_never_a_record(host: _Host)
     assert "entry-only" not in line
 
 
+def test_a_launch_exception_prints_unavailable_with_its_class_and_message(host: _Host) -> None:
+    host.set_items(items=["livespec-dev-tooling-ffffff"])
+    host.authority.unlink()
+    (line,) = host.incident_lines()
+    assert f"{_UNREADABLE} incident-authority-unavailable" in line
+    assert "FileNotFoundError" in line
+    assert str(host.authority) in line
+    assert _RECORD not in line
+    assert "entry-only" not in line
+
+
 def test_each_item_is_read_on_its_own_reply(host: _Host) -> None:
     host.set_items(items=["livespec-dev-tooling-aaaaaa", "livespec-dev-tooling-bbbbbb"])
     host.set_replies(
