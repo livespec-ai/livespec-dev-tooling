@@ -3001,13 +3001,20 @@ queue's memory nominal stays its churn slots x 11Gi and only dev-tooling changes
 | `headroom-gamingpc` | gamingpc-xubuntu | 92.38 | 7.5 | 16 | floor(92.38 - 7.5 - 16) | 68Gi |
 
 **Revert triggers** (throughput-plans-coordinator's 2026-11-20 set, binding on this apply; owner ci-runtime-and-cost). Any one
-on a gmktec read takes the node back to 1:
+on a gmktec read takes the node back to 1. Each is defined here as ONE read-only command, fixed by the 2026-11-22 second look:
 
-1. gmktec memory use above 75 percent on a 5 minute read.
-2. gmktec cpu PSI `some` avg60 above 30.
-3. Any factory pod OOMKilled or Pending on gmktec.
-4. The factory ramp cap stalled by a memory admission refusal.
-5. A runner pod Kueue admitted to gmktec that stays Pending over 5 minutes.
+1. Memory use above 75 percent on a 5 minute read: `kubectl top node gmktec-xubuntu`, the `MEMORY(%)` column (36 percent at the
+   second look; `free -m` reads higher, about 44 percent, because it counts page cache, and is not the trigger).
+2. cpu PSI `some` avg60 above 30: `ssh cwoolley@gmktec-xubuntu 'cat /proc/pressure/cpu'` (4.4 at the second look).
+3. Any factory pod OOMKilled or Pending on gmktec: `kubectl get pods -n factory -o wide` filtered to `gmktec-xubuntu`, reading
+   `lastState.terminated.reason`, plus any factory pod Pending with a gmktec scheduling message.
+4. The factory ramp stalled by a memory admission refusal: any factory pod event "Insufficient memory" naming gmktec-xubuntu
+   (`kubectl get events -n factory --field-selector reason=FailedScheduling`), or the factory memory-budget admission
+   refusing a launch.
+5. A runner pod Kueue admitted to gmktec that stays Pending over 5 minutes: a Pending `arc-runners` pod older than 5 minutes
+   whose scheduling message is "Insufficient ci-runner.io/churn-slot" WHILE gmktec shows free churn-slot allocatable. The set
+   of runners already stuck before the apply (admitted against gamingpc's phantom slots, listed in the before read) does not
+   count; only a runner that is Pending after gmktec has free slots does.
 
 **REVERT** restores `ADMISSION_CAPACITY_C=1` in `../../phase0-bare-metal/profiles/gmktec-xubuntu.env`, livespec-dev-tooling-cq
 churn quota 9 -> 7 and memory 99Gi -> 77Gi, and the `headroom-gmktec` row to 62.4 / 53.8 / 0 = 8Gi, through the same files and
@@ -3015,8 +3022,14 @@ the same apply route (`node_extended_resource` for capacity, `ci_converge_unit` 
 first, then the node, so the quota never exceeds the capacity.
 
 **Order of apply (a separate, reviewed step, not part of this change).** Raise the node capacity first
-(`node_extended_resource`, `--limit gmktec-xubuntu`), then `ci_converge_unit`, so the quota never promises a slot the node
-does not advertise. A fresh read-only second look gates the apply, and it does not run inside a merge-quiet window.
+(`just ansible-apply ansible/ci-pool.yml --tags node_extended_resource --limit gmktec-xubuntu`), then the quotas
+(`just ansible-apply ansible/ci-pool.yml --tags ci_converge_unit --limit poweredge-xubuntu`: `ci_converge_unit` is
+server-only, so the limit is poweredge, and its drift is read first), so the quota never promises a slot the node does not
+advertise. The second look found the installed gmktec profile copy also stale on `KUBELET_ARGS` (master carries the
+system-reserved, kube-reserved and eviction settings of commit 0f9facd18; the installed copy has them empty): the apply installs
+that text, but the role has no restart task, so it takes effect only at the announced k3s-agent restart, which shrinks
+allocatable from 62.4Gi to about 59.9Gi (the 11Gi per slot still floors correctly, with no margin). A fresh read-only second look
+gates the apply, and it does not run inside a merge-quiet window.
 
 **The reads.** Before and after, and at +2 h: M1 and M2 (open to CI green), gmktec churn-slot allocatable (3), gated runners
 admitting, gmktec `mpstat` idle, BestEffort `cpu.pressure` avg60, gmktec memory use, factory pod count on gmktec, Pending
