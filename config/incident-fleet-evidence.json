@@ -173,6 +173,19 @@
       "normal_factory_proof": "Same-item unexpedited factory repayment: livespec-dev-tooling#4204 (branch feat/livespec-dev-tooling-t26bbr, petri run 01M75SZE4R3DAXGKADSABK9GR8, head 1330407360f22bf5b285e7b45750dfd28d861053, no Factory-Override trailer) merged 2026-11-11T19:44:42Z as 02adb9dbf0907465beb9ee6a831df6e8329139f5 on full checks; its master push run 43090044473 (event push, branch master) ran 13 jobs to success including check-per-file-coverage and check-coverage; the repayment removed the repair marker (git show 02adb9db:livespec_dev_tooling/fleet/_read_failure.py has no EXPEDITED_INCIDENT_RESPONSE line, and git grep 'EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-t26bbr' origin/master finds nothing). Closure: bind-repayment-acceptance --pr 4204 verified generation 18 and complete-incident --master-run 43090044473 verified generation 19, phase CLOSED, outstanding [] (t26bbr ledger comments 2026-11-11T21:25Z; coordinator grade 21:46Z; item closed)."
     },
     {
+      "repository": "livespec-ai/livespec-dev-tooling",
+      "surface": "Spec enforcement and debt",
+      "disposition": "implemented",
+      "manifest_sha256": "d62d95663d42779d6f539ada2363d80f146fc48320c6fec989f97772a759b0fc",
+      "source_path": "livespec-ai/livespec-dev-tooling:livespec_dev_tooling/checks/heading_coverage.py, livespec_dev_tooling/checks/heading_coverage_debt_register.py and livespec_dev_tooling/checks/no_todo_registry.py (the roots SURFACE_ROOTS pins for this surface)",
+      "release_build": "v1.235.0",
+      "proof_ref": "Incident chain livespec-dev-tooling-t26bbr in livespec-ai/livespec-dev-tooling (closed), read 2026-11-22 from the ledger comments of t26bbr and the forge. Every one of its eight retained expedited-local-partial local-gate receipts (attempt 1 and attempt 2, pre-commit and pre-push) records check-heading-coverage, check-heading-coverage-debt-register and check-no-todo-registry as run to completion with status passed, not deferred; check-no-todo-registry printed its TODO-entry warnings and still passed. The chain's 'DEFERRED SPEC DEBT' comment (2026-11-12 12:19, rehearsal 2 step 1.9) records the spec obligation the expedited attempts could not repay (a spec statement of B1, B1c and B2 for the gh failure classifier; the attempts edit no spec file) and names its repayment, a propose-change plus --only-topic revise ahead of the normal repayment dispatch. The normal repayment is livespec-dev-tooling#4204. This claim shows these three checks execute and pass under the expedited local-gate mode and that spec debt is carried as a deferral; it is not a source-byte equality claim. git diff v1.198.0 v1.235.0 over this surface's three roots prints only a CHECK_PURITY value change ('tree-pure' to 'world-reading') in heading_coverage_debt_register.py and no_todo_registry.py; the audit's own per-row comparison against HEAD decides whether the release it names still serves.",
+      "owner": "livespec-ai/livespec-dev-tooling",
+      "incident_item": "livespec-dev-tooling-t26bbr",
+      "cumulative_scope": "2d28a5a1bf041d99f8c171c184b0dd9bec49a6633a80de6a3b6499bcde11498a",
+      "normal_factory_proof": "Same-item unexpedited factory repayment livespec-dev-tooling#4204 merged as 02adb9dbf0907465beb9ee6a831df6e8329139f5 on full checks; master run 43090044473 succeeded and complete-incident closed t26bbr at generation 19."
+    },
+    {
       "repository": "livespec-ai/livespec",
       "surface": "Fast-gate timing",
       "disposition": "implemented",
