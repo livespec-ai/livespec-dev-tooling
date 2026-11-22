@@ -412,6 +412,14 @@ incident_observer_merge_authority_script: "{{ incident_observer_reader_dir }}/{{
 # directory's config and the root runner's ledger call carries the tenant password. It is
 # never the observer-owned reference clone.
 incident_observer_merge_workdir: /opt/livespec-incident/merge-workdir
+# The fenced route that starts that runner (livespec-dev-tooling-4r5rrv): a root oneshot run
+# by a timer. Its marker directory is root-owned; one marker per (pull request, armed head)
+# keeps a start, and a recorded refusal, to once.
+incident_observer_merge_route_unit_name: livespec-incident-merge-route
+incident_observer_merge_route_service_path: /etc/systemd/system/livespec-incident-merge-route.service
+incident_observer_merge_route_timer_path: /etc/systemd/system/livespec-incident-merge-route.timer
+incident_observer_merge_route_interval: 1min
+incident_observer_merge_route_dir: /var/lib/livespec-incident/route
 
 # --- the scratch-branch instance ----------------------------------------------
 # False for production. ansible/incident-observer-scratch.yml sets it, with the
