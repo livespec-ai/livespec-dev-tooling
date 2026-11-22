@@ -535,6 +535,14 @@ def test_file_lloc_module_importable_without_running_main() -> None:
     assert callable(module.main)
 
 
+def test_file_lloc_exposes_public_logical_line_counter() -> None:
+    """Consumers can count LLOC without importing the check's private helper."""
+    source = '"""module docstring"""\n# comment\nvalue = 1\n'
+
+    assert "count_lloc" in _MODULE.__all__
+    assert _MODULE.count_lloc(source=source) == 1
+
+
 def test_main_renders_the_consumer_config_parse_failure(
     *,
     tmp_path: Path,
