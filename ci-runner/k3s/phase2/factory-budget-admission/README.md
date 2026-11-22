@@ -60,6 +60,12 @@ A first-placement pod that no node admits waits for sandbox-driver-kubernetes'
 600 s `start_timeout_secs` and then fails sandbox start. bd-ib-nmuyjc.5's stability
 bar counts that as an infrastructure failure. Two rules prevent it:
 
+**A pod stuck in ContainerCreating is not counted.** A bound sandbox pod that is
+Pending with no container started for longer than `FACTORY_BUDGET_STUCK_SECONDS`
+(default 600 s, the driver's start timeout) holds no CPU and may never start, so it
+does not use a budget slot. The cycle logs a `STUCK pod=<ns>/<name>` line for each
+(livespec-dev-tooling-tg4brp: a FailedMount pod held one of poweredge's 9 slots for 46 h).
+
 1. **Keep every launch cap that places sandboxes at or below the sum of the budgets.**
    The reconciler counts the pods of EVERY instance on the cluster, so the caps
    that must fit are the fleet cap plus the candidate and mi-homelab caps. Lower a
