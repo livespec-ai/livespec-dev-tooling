@@ -58,6 +58,13 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.234.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.234.0...v1.234.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **checks:** a factory gate preview that cannot read branch protection is SKIPPED-UNREADABLE, not failed (livespec-dev-tooling-gkdh7v) ([54bf2c5](https://github.com/livespec-ai/livespec-dev-tooling/commit/54bf2c523fb632d7bba29ea119732c8d3cc46ca1))
+
 ## [1.234.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.233.0...v1.234.0) (2026-11-22)
 
 
