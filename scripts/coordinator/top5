@@ -36,6 +36,12 @@ legacy marker), prints DRAINED with its END CONDITION snippet and is not counted
 ends only when a priorities-record re-adds its plan, and about 30 of them printed STALE every
 tick buried the real stalls (coordinator 2026-11-15).
 
+The INCIDENTS section (rule INCIDENT-IS-A-RECORD, coordinator-duties §3; livespec-dev-tooling-6acgnl) prints after HOLDS: for each
+open incident:entry item, whether the incident authority's read-current action reports its chain as entry-only with no
+genesis (refusal incident-authority-missing), as a record that exists (a reading, or incident-authority-identity-mismatch),
+or as unreadable followed by the code (any other refusal, a timeout, a call that cannot run). A repository with no
+incident:entry item prints `none declared`. It makes no write call to the authority or the ledger.
+
 The OVERCOMMIT section (maintainer-approved 2026-11-13) prints, first in the header, every
 node fleet-utilization.sh --overcommit-only marks FLAGGED (idle under 5 % with the BestEffort
 CI slice's CPU pressure above 30: the classes sharing the node exceed its CPU) or UNREAD, for
@@ -209,6 +215,113 @@ def holds_header():
     for _, out in rows or [((0, ""), ["none live"])]:
         for line in out:
             print(f"  {line}")
+    print()
+
+
+INCIDENT_LABEL = "incident:entry"
+INCIDENT_CALL_TIMEOUT_S = float(os.environ.get("TOP5_INCIDENT_CALL_TIMEOUT_S") or 60)  # the env is a test seam only
+INCIDENT_WORKERS = 8
+INCIDENT_REPOSITORY = "livespec-ai/livespec-dev-tooling"
+INCIDENT_REFUSED_EXIT = 78
+INCIDENT_ENTRY_ONLY = "incident-authority-missing"
+INCIDENT_RECORD_CODES = ("incident-authority-identity-mismatch",)
+
+
+def incident_authority_command():
+    """argv prefix of the incident authority's script, or None when no build is registered for this checkout.
+
+    TOP5_INCIDENT_AUTHORITY is a test seam only: one executable that stands in for the whole prefix.
+    """
+    seam = os.environ.get("TOP5_INCIDENT_AUTHORITY")
+    if seam:
+        return [seam]
+    checkout = os.path.join(WORKSPACE, "livespec-dev-tooling")
+    try:
+        registry = json.load(open(os.path.join(os.path.expanduser("~"), ".claude", "plugins", "installed_plugins.json")))
+        for key, entries in registry["plugins"].items():
+            if key.split("@", 1)[0] != "livespec-orchestrator-beads-fabro":
+                continue
+            for entry in entries:
+                if os.path.realpath(entry["projectPath"]) == os.path.realpath(checkout):
+                    script = os.path.join(entry["installPath"], "scripts", "bin", "incident_authority.py")
+                    return WRAPPER + ["python3", script]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return None
+
+
+def incident_chain_state(item_id, command):
+    """(state, code) of one incident item from the authority's read-current reply: record, entry-only or unreadable.
+
+    Only read-current is ever called, so a top5 run makes no write call to the authority.
+    """
+    if command is None:
+        return "unreadable", "incident-authority-unavailable"
+    argv = command + [
+        "read-current", "--repo", os.path.join(WORKSPACE, "livespec-dev-tooling"),
+        "--repository", INCIDENT_REPOSITORY, "--operation", "top5-incidents-read", "--owner", "top5",
+        "--item", item_id, "--attempt", "1", "--phase", "repair", "--generation", "1",
+    ]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=INCIDENT_CALL_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return "unreadable", "incident-authority-timeout"
+    except Exception:
+        return "unreadable", "incident-authority-unavailable"
+    if done.returncode not in (0, INCIDENT_REFUSED_EXIT):
+        return "unreadable", "incident-authority-exit"
+    try:
+        reply = json.loads(done.stdout)
+        result = reply["result"] if isinstance(reply, dict) else None
+    except (ValueError, KeyError):
+        return "unreadable", "incident-authority-malformed-reply"
+    if done.returncode == 0:
+        return ("record", "") if reply.get("status") == "verified" else ("unreadable", "incident-authority-not-verified")
+    code = result.get("code") if isinstance(result, dict) else None
+    if not isinstance(code, str) or not code or reply.get("status") != "refused":
+        return "unreadable", "incident-authority-malformed-refusal"
+    if code == INCIDENT_ENTRY_ONLY:
+        return "entry-only", code
+    if code in INCIDENT_RECORD_CODES:
+        return "record", code
+    return "unreadable", code
+
+
+def incident_line(item, state, code):
+    ident = f"{item.get('id')} [{item.get('status')}]"
+    if state == "entry-only":
+        return f"{ident} chain state is entry-only with no genesis <<< resolve THIS tick: file the incident (rule INCIDENT-IS-A-RECORD)"
+    if state == "record":
+        return f"{ident} record exists"
+    return f"{ident} chain state is unreadable {code}"
+
+
+def incidents_header():
+    """One INCIDENTS line per open incident:entry item, from the incident authority's read-current (rule INCIDENT-IS-A-RECORD).
+
+    The items come from the ledger only to know which ids to ask; the chain state comes from the authority,
+    never from labels. Read-only: one `bd list` and one read-current call per item. A closed item is not listed.
+    """
+    cwd, wrapper = repo_for("livespec-dev-tooling-x")
+    items = run(["bd", "list", "--label", INCIDENT_LABEL, "--limit", "0", "--json"], cwd, wrapper)
+    print(
+        f"INCIDENTS (open {INCIDENT_LABEL} items; chain state read through the incident authority's read-current,"
+        " never from labels; rule INCIDENT-IS-A-RECORD, coordinator-duties §3):"
+    )
+    if not isinstance(items, list):
+        print("  UNREAD ledger read failed for the incident items")
+        print()
+        return
+    items = sorted((i for i in items if isinstance(i, dict) and i.get("id")), key=lambda i: str(i["id"]))
+    if not items:
+        print("  none declared")
+        print()
+        return
+    command = incident_authority_command()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=INCIDENT_WORKERS) as pool:
+        states = list(pool.map(lambda i: incident_chain_state(str(i["id"]), command), items))
+    for item, (state, code) in zip(items, states):
+        print(f"  {incident_line(item, state, code)}")
     print()
 
 
@@ -827,6 +940,7 @@ print()
 overcommit_header()
 stranded_header()
 holds_header()
+incidents_header()
 host_guard_backfills_header()
 COORD_COMMENTS = read_comments(COORDINATOR_EPIC)
 watchdog_alarms_header(COORD_COMMENTS)
