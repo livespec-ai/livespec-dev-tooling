@@ -188,13 +188,13 @@ def _written_text(*, name: str, tool_input: dict[str, object]) -> str:
     return ""
 
 
-def _last_turn_writes(*, entries: list[dict[str, object]]) -> list[tuple[str, str]]:
-    """(path, written-text) pairs persisted after the last real user message."""
+def _last_turn_writes(*, entries: list[dict[str, object]]) -> list[tuple[str, str, str]]:
+    """(tool name, path, written-text) persisted after the last real user message."""
     start = 0
     for index, entry in enumerate(entries):
         if _is_real_user_entry(entry=entry):
             start = index + 1
-    writes: list[tuple[str, str]] = []
+    writes: list[tuple[str, str, str]] = []
     for entry in entries[start:]:
         if entry.get("type") != "assistant":
             continue
@@ -220,7 +220,7 @@ def _last_turn_writes(*, entries: list[dict[str, object]]) -> list[tuple[str, st
             path = tool_input_dict.get("file_path")
             if not isinstance(path, str) or not path:
                 continue
-            writes.append((path, _written_text(name=name, tool_input=tool_input_dict)))
+            writes.append((name, path, _written_text(name=name, tool_input=tool_input_dict)))
     return writes
 
 
@@ -264,9 +264,14 @@ def _warning() -> str | None:
             continue  # fail-open per line: skip malformed transcript lines
         if isinstance(parsed, dict):
             entries.append(cast("dict[str, object]", parsed))
-    for path, text in _last_turn_writes(entries=entries):
+    for name, path, text in _last_turn_writes(entries=entries):
         if not _is_planning_artifact(path=path):
             continue
+        if name == "Edit":
+            # An Edit may replace just one checkbox inside a larger queue. Its
+            # replacement fragment cannot represent that queue, so inspect the
+            # post-edit artifact. Read failures reach main's fail-open boundary.
+            text = Path(path).read_text(encoding="utf-8")
         count = _checkbox_count(text=text)
         if count >= CHECKBOX_THRESHOLD:
             message = (
