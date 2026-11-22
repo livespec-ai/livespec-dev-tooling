@@ -83,12 +83,16 @@ refuses it when that evidence is absent.
 
 When master is red and the culprit commit touches product implementation `.py`,
 an operator using a gh OAuth user token opens the revert through GraphQL
-`createCommitOnBranch`, then opens a PR for the branch it creates:
+`createCommitOnBranch` on a branch the operator first creates, then opens a PR
+for that branch. `createCommitOnBranch` only appends a commit to an existing
+branch; it never creates one:
 
-1. Identify the full SHA of the culprit commit and its first parent. Start the
-   new branch from the current target branch and use that target head as the
-   mutation's `expectedHeadOid` so a moved branch refuses rather than silently
-   applying a stale revert.
+1. Identify the full SHA of the culprit commit and its first parent. Read the
+   current target branch head, then create the revert branch at that head with
+   GraphQL `createRef` (or `gh api repos/<owner>/<repo>/git/refs -f
+   ref=refs/heads/<revert-branch> -f sha=<target-head>`). Use that same target
+   head as the mutation's `expectedHeadOid` so a moved branch refuses rather
+   than silently applying a stale revert.
 2. Describe the inverse tree in `createCommitOnBranch`'s `fileChanges`: for
    every changed path, restore the culprit's first-parent contents (or delete a
    path the culprit introduced). Do not hand-resolve a conflicting product
