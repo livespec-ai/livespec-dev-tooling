@@ -29,7 +29,6 @@ from livespec_dev_tooling.ci_coverage_reuse import (
     coverage_reuse_outcome,
 )
 
-# EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-ii557b
 __all__: list[str] = ["main"]
 
 _DATASET: Final = "github-ci"
