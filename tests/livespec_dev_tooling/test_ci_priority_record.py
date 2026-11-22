@@ -31,8 +31,15 @@ def test_record_bands_open_plan_children_and_explicit_item_deterministically() -
         RadarEntry(
             kind="item", tenant="tenant", id="item", words="", said_at=date.today(), blocked_by=()
         ),
+        RadarEntry(
+            kind="item", tenant="tenant", id="done", words="", said_at=date.today(), blocked_by=()
+        ),
+        RadarEntry(
+            kind="item", tenant="tenant", id="absent", words="", said_at=date.today(), blocked_by=()
+        ),
     )
     projection = [
+        {"tenant": "tenant", "id": "done", "status": "closed", "parent": None},
         {"tenant": "tenant", "id": "plan.dotted", "status": "ready", "parent": None},
         {"tenant": "tenant", "id": "edge-child", "status": "active", "parent": "plan"},
         {"tenant": "tenant", "id": "closed", "status": "closed", "parent": "plan"},
@@ -41,7 +48,7 @@ def test_record_bands_open_plan_children_and_explicit_item_deterministically() -
 
     record = build_record(
         projection=projection,
-        thresholds={"high": 1, "medium": 2},
+        thresholds={"high": 1, "medium": 4},
         radar_commit="radar-sha",
         generated_at="2026-11-22T00:00:00Z",
         radar=radar,
@@ -140,7 +147,14 @@ def test_record_ignores_invalid_rows_and_low_bands_and_prefers_the_higher_band()
     )
 
     assert build_record(
-        projection=[None, {}, {"tenant": "tenant"}, {"id": "missing-tenant"}],
+        projection=[
+            None,
+            {},
+            {"tenant": "tenant"},
+            {"id": "missing-tenant"},
+            {"tenant": "tenant", "id": "shared", "status": "ready"},
+            {"tenant": "tenant", "id": "low", "status": "ready"},
+        ],
         thresholds={"high": 1, "medium": 2},
         radar_commit="sha",
         generated_at="then",

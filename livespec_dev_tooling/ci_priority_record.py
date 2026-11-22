@@ -23,6 +23,7 @@ from livespec_dev_tooling.radar.radar import RADAR, RadarEntry
 __all__: list[str] = ["build_record", "main"]
 
 _MAX_VARIABLE_BYTES = 48 * 1024
+_CLOSED_STATUSES = frozenset({"closed", "done"})
 _BAND_SCORE = {"low": 0, "medium": 1, "high": 2}
 _MANIFEST_ENDPOINT = "repos/livespec-ai/livespec/contents/.livespec-fleet-manifest.jsonc?ref=master"
 
@@ -51,9 +52,18 @@ def _open_children(
         identifier
         for (tenant, identifier), record in records.items()
         if tenant == entry.tenant
-        and record.get("status") not in {"closed", "done"}
+        and record.get("status") not in _CLOSED_STATUSES
         and (identifier.startswith(prefix) or record.get("parent") == entry.id)
     }
+
+
+def _open_item(
+    *, entry: RadarEntry, records: Mapping[tuple[str, str], Mapping[str, object]]
+) -> set[str]:
+    record = records.get((entry.tenant, entry.id))
+    if record is None or record.get("status") in _CLOSED_STATUSES:
+        return set()
+    return {entry.id}
 
 
 def _band(*, index: int, thresholds: Mapping[str, object]) -> str:
@@ -83,7 +93,9 @@ def build_record(
         if band == "low":
             continue
         identifiers = (
-            _open_children(entry=entry, records=records) if entry.kind == "plan" else {entry.id}
+            _open_children(entry=entry, records=records)
+            if entry.kind == "plan"
+            else _open_item(entry=entry, records=records)
         )
         for identifier in identifiers:
             prior = items.get(identifier, "low")
