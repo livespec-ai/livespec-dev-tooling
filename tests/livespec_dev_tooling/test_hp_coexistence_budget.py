@@ -280,8 +280,8 @@ def _task_whose_body_names(*, needle: str) -> str:
     return matching[0]
 
 
-def test_the_role_renders_both_per_node_drop_ins_only_on_an_agent() -> None:
-    """The wiring, and the mount ordering that makes the moved data directory safe."""
+def test_the_role_renders_kubelet_args_for_each_k3s_node() -> None:
+    """The kubelet wiring covers the server and agents; mount ordering stays agent-only."""
     defaults = _declared(pattern=_ROLE_DEFAULT, source=_K3S_DEFAULTS)
     drop_in = _scalar(
         declared=defaults,
@@ -300,9 +300,9 @@ def test_the_role_renders_both_per_node_drop_ins_only_on_an_agent() -> None:
         f"that is what makes the apply converge it and `just ansible-drift` show it;\n"
         f"body={body!r}"
     )
-    assert "k3s_config_cluster_role == 'agent'" in body, (
-        f"only an agent takes these: a server's kubelet arguments are the fleet's shared "
-        f"config.yaml;\nbody={body!r}"
+    assert "k3s_config_cluster_role == 'agent'" not in body, (
+        f"a pool server runs a kubelet too, so the per-node arguments must render for it as "
+        f"well as for agents;\nbody={body!r}"
     )
 
     # THE HAZARD THE MOUNT DROP-IN EXISTS FOR. hp's NODE_DATA_DIR puts k3s's data
