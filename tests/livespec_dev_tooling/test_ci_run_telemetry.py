@@ -18,6 +18,7 @@ __all__: list[str] = []
 
 _MODULE = "livespec_dev_tooling.ci_run_telemetry"
 _MODULE_PATH = Path(__file__).resolve().parents[2] / "livespec_dev_tooling" / "ci_run_telemetry.py"
+_EXPEDITED_INCIDENT_MARKER = "EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-ii557b"
 _RUN_ID = 42
 _REPOSITORY = "livespec-ai/livespec-dev-tooling"
 _RUN = {
@@ -82,6 +83,11 @@ def _span_attributes(*, span: dict[str, Any]) -> dict[str, str]:
         attribute["key"]: next(iter(attribute["value"].values()))
         for attribute in span["attributes"]
     }
+
+
+def test_the_ii557b_expedited_incident_marker_is_removed_from_the_exporter() -> None:
+    """The repaid incident leaves the exporter's working code path untouched."""
+    assert _EXPEDITED_INCIDENT_MARKER not in _MODULE_PATH.read_text(encoding="utf-8")
 
 
 def test_the_budgeted_log_read_exports_the_consumer_reuse_outcome(
