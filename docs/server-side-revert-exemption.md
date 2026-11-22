@@ -54,9 +54,57 @@ Two conjoined properties, BOTH required. Implemented in
 
 The commit object must carry an OpenPGP signature that verifies against a
 keyring built from GitHub's web-flow public keys **pinned as material in that
-module**, and nothing else. GitHub signs every commit its web UI and API create
-with that key. Producing such a signature requires GitHub's PRIVATE key, which
-no agent, hook or contributor holds.
+module**, and nothing else. Producing such a signature requires GitHub's
+PRIVATE key, which no agent, hook or contributor holds.
+
+### The measured forge routes are not interchangeable
+
+The former premise that GitHub signs every commit its web UI and API creates is
+false. On 2026-11-12, using one gh OAuth user token, the GraphQL
+`createCommitOnBranch` mutation created a probe commit that verified as valid
+against GitHub's web-flow signing key. It is the measured forge route for this
+exemption when an operator must make a server-side revert of a commit touching
+product implementation `.py`.
+
+The measurement does **not** establish the GitHub App installation token case:
+that remains unmeasured until `livespec-dev-tooling-2yne2h` records it. In
+particular, an implementation that authenticates `createCommitOnBranch` with an
+App installation token must not infer that it earns this exemption from the
+OAuth-user-token result.
+
+Two tempting alternatives are explicitly outside the exemption. GraphQL
+`revertPullRequest` — the route used by `gh pr revert` — creates unsigned
+commits, as does the REST contents API. A server-side revert made by either
+route never earns the exemption when it touches product implementation `.py`;
+the range gate therefore continues to require ordinary trailer evidence and
+refuses it when that evidence is absent.
+
+### Operator recipe: an OAuth `createCommitOnBranch` revert
+
+When master is red and the culprit commit touches product implementation `.py`,
+an operator using a gh OAuth user token opens the revert through GraphQL
+`createCommitOnBranch`, then opens a PR for the branch it creates:
+
+1. Identify the full SHA of the culprit commit and its first parent. Start the
+   new branch from the current target branch and use that target head as the
+   mutation's `expectedHeadOid` so a moved branch refuses rather than silently
+   applying a stale revert.
+2. Describe the inverse tree in `createCommitOnBranch`'s `fileChanges`: for
+   every changed path, restore the culprit's first-parent contents (or delete a
+   path the culprit introduced). Do not hand-resolve a conflicting product
+   `.py` path: changed bytes are new code and fail the byte-identity half of
+   the exemption.
+3. Give the mutation a commit message that names the reverted commit, including
+   this body line on its own line: `This reverts commit <full-culprit-sha>.`
+   That line is the gate's lookup hint for the ancestor whose preimage it
+   compares; it is not, by itself, an exemption.
+4. Open the resulting branch as the server-side revert PR. Before merging,
+   verify that the forge-created commit is valid against the pinned web-flow
+   signing key and that every affected product `.py` blob is byte-identical to
+   the culprit's first parent.
+
+Do not substitute `gh pr revert` or a REST contents-API write for step 2: both
+produce unsigned commits and therefore cannot pass this exemption.
 
 This is the property a subject line does not have. `git commit -m 'Revert
 "..."'` costs an agent one line; a committer of `GitHub <noreply@github.com>`
@@ -137,14 +185,17 @@ repository, which a factory branch here cannot reach. Its server-side-revert
 section needs the reciprocal paragraph:
 
 > The server-side revert is not merely unmediated by the local hooks — it is
-> RECOGNISED by them. `check-red-green-replay`'s commit-range gate exempts a
+> RECOGNISED by them. Use GraphQL `createCommitOnBranch` for the signed
+> server-side-revert route; `gh pr revert` uses `revertPullRequest`, whose
+> commits are unsigned and cannot earn this exemption. The
+> `check-red-green-replay` commit-range gate exempts a `createCommitOnBranch`
 > revert that verifies against GitHub's pinned web-flow signing key AND is
 > byte-identical to the reverted commit's parent at every product impl `.py`
-> path it touches, so the route this section mandates reaches a mergeable state
-> with no gate weakened and no per-occurrence human bypass. The exemption is
-> keyed on evidence an agent cannot fabricate, never on a subject line, and it
-> is the only one: it does not reopen the lever/flag/severity-knob this section
-> forbids. See livespec-dev-tooling's
+> path it touches, so this route reaches a mergeable state with no gate weakened
+> and no per-occurrence human bypass. The exemption is keyed on evidence an
+> agent cannot fabricate, never on a subject line, and it is the only one: it
+> does not reopen the lever/flag/severity-knob this section forbids. See
+> livespec-dev-tooling's
 > `docs/server-side-revert-exemption.md` and
 > `livespec_dev_tooling/checks/_red_green_replay_revert.py`.
 
