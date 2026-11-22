@@ -114,8 +114,12 @@ spec:
             # set cpu back to 5.
             - name: "cpu"
               nominalQuota: 10
+            # RAISED 8Gi -> 16Gi 2026-11-22 (plan gate-job-resources, livespec-dev-tooling-ukoeah;
+            # legacy-coordinator-agent ruling "route poweredge repro memory 16Gi"):
+            # a second repro lane. Derived from node-memory-budget.yaml (repro_memory_gib 16.0);
+            # report-memory-budget.py reads poweredge committed 124.2Gi of 377Gi, fits.
             - name: "memory"
-              nominalQuota: 8Gi
+              nominalQuota: 16Gi
             - name: "ephemeral-storage"
               nominalQuota: 5Gi
         - name: gates-repro-gmktec-flavor
