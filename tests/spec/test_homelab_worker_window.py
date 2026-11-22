@@ -265,6 +265,7 @@ def test_snapshot_strips_server_metadata_records_its_time_and_is_never_overwritt
     second = _run(env=env, action="snapshot")
     assert second.returncode != 0
     assert "refusing to replace" in second.stderr
+    assert "archive-snapshot action" in second.stderr
     assert json.loads(_snapshot_path(env).read_text(encoding="utf-8")) == snap
 
 
