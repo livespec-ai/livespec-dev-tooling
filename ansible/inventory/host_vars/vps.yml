@@ -178,6 +178,15 @@ honeycomb_trigger_recipients_check_checkout: /home/ubuntu/workspace/vps-info
 # The account this host's candidates run as; controller.json carries its uid as
 # candidate_uid, which the controller refuses to equal its own.
 incident_observer_candidate_user: ubuntu
+# The publisher workflow's commits on master that production approves
+# (livespec-dev-tooling-bqnzcm.4). Non-empty provisions the CI identity policy
+# and publishes POST /ci/publish on the funnel port, for livespec-dev-tooling's
+# installation (ansible/dev-host.yml) and every further one
+# (ansible/incident-observer-installation.yml) alike: both plays read this one
+# list, so neither refuses the other's declared /ci/publish
+# (livespec-dev-tooling-dae4kc).
+incident_observer_ci_publisher_shas:
+  - 92debdb271bb6ad9292ea5f64d9d3d7527352278
 
 # --- otel_collector ---
 # The pressure telemetry service posts OTLP directly and reads the collector's

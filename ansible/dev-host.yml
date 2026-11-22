@@ -131,13 +131,12 @@
     # loopback listener first, then the tailnet front that publishes it from
     # this host's tailscale_serve_mappings. Both run under the credential
     # wrapper; see roles/incident_observer/README.md.
+    # Production's approved publisher commits (`incident_observer_ci_publisher_shas`)
+    # are this host's host_vars, never a play variable here: the installation
+    # playbook (ansible/incident-observer-installation.yml) must read the same
+    # list, or its funnel guard refuses production's live /ci/publish
+    # (livespec-dev-tooling-dae4kc).
     - role: incident_observer
-      vars:
-        # The publisher workflow's commit on master that production approves
-        # (livespec-dev-tooling-bqnzcm.4). Non-empty provisions the CI identity
-        # policy and publishes POST /ci/publish on the funnel port.
-        incident_observer_ci_publisher_shas:
-          - 92debdb271bb6ad9292ea5f64d9d3d7527352278
       tags: [incident_observer]
     - role: tailscale_serve
       tags: [tailscale_serve]

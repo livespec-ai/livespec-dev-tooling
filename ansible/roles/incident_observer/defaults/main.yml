@@ -184,7 +184,9 @@ incident_observer_tenant_project_id: c8dcb5d9-1d1c-47d9-a1e5-f856e60b9544
 # empty list does neither, removes a policy an earlier apply installed, and the
 # controller answers every publication identity-not-provisioned. The role's
 # default is EMPTY; production's approved commits are the committed
-# `incident_observer_ci_publisher_shas` play variable in ansible/dev-host.yml. A
+# `incident_observer_ci_publisher_shas` in the dev host's host_vars
+# (inventory/host_vars/vps.yml), which both ansible/dev-host.yml and
+# ansible/incident-observer-installation.yml read (livespec-dev-tooling-dae4kc). A
 # roll lists the old and the new commit, moves the callers' pin, then drops the old one.
 incident_observer_ci_publisher_shas: []
 # The repository that ships the publisher is the first inventory entry, whose
