@@ -11,6 +11,7 @@ protected, and runs the authority with that tree as `--repo` and as its working 
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -88,7 +89,12 @@ def _script(*, tmp_path: Path) -> Path:
     return script
 
 
-def _go(*, tmp_path: Path, ledger_root: Path | None) -> int:
+def _go(
+    *,
+    tmp_path: Path,
+    ledger_root: Path | None,
+    run_text_command: bindings.TextRunner | None = None,
+) -> int:
     argv = [
         "--pr",
         "7",
@@ -106,7 +112,7 @@ def _go(*, tmp_path: Path, ledger_root: Path | None) -> int:
         owner_uid=0,
         interpreter=Path("/usr/bin/env"),
         connect=Mock(return_value=SimpleNamespace(token=_APP_TOKEN)),
-        run_text_command=Mock(return_value=(0, "")),
+        run_text_command=run_text_command or Mock(return_value=(0, "")),
         make_reader=Mock(),
     )
 
@@ -128,6 +134,38 @@ def test_the_authority_runs_with_the_ledger_root_as_its_repo_and_working_directo
         str(tmp_path / "reference") not in {str(call["cwd"]), call["flags"]["repo"]},
     ]
     assert all(facts)
+
+
+def test_a_merged_repair_records_its_ledger_comment_from_the_validated_ledger_root(
+    monkeypatch, tmp_path
+):
+    merge = _world(monkeypatch)
+    ledger = _ledger_root(tmp_path=tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    calls: list[tuple[Path | None, list[str]]] = []
+
+    def text_command(*, argv: Sequence[str], cwd: Path | None = None) -> tuple[int, str]:
+        calls.append((cwd, list(argv)))
+        return 0, ""
+
+    def merged_with_record(**kwargs: object) -> Merged:
+        record = kwargs["record"]
+        assert callable(record)
+        record(incident_id="inc-1", text="merged")
+        return _MERGED
+
+    merge.side_effect = merged_with_record
+    monkeypatch.chdir(elsewhere)
+    status = _go(tmp_path=tmp_path, ledger_root=ledger, run_text_command=text_command)
+
+    assert status == 0
+    assert calls == [
+        (
+            ledger,
+            ["/usr/local/bin/with-livespec-env.sh", "--", "bd", "comment", "inc-1", "merged"],
+        )
+    ]
 
 
 def test_a_missing_ledger_root_is_refused_by_name_before_any_merge(monkeypatch, tmp_path, capsys):
