@@ -453,12 +453,16 @@ def test_measured_job_hours_derive_the_committed_fair_shares() -> None:
     assert "## gamingpc 4: cohort 32 (2026-11-18)" in derivation
 
 
-def test_master_push_slice_reserves_its_quota_and_lends_none_of_it() -> None:
-    """The master slice's floor is reserved: `lendingLimit: 0`, no preemption.
+def test_master_push_slices_lend_their_floor_and_never_preempt() -> None:
+    """Every cohort member lends its whole floor, the master slices included.
 
-    Reclaim is Never across the cohort, so a lent master slot would only come
-    back when the pull-request job borrowing it finished — the wait the slice
-    exists to remove. Every OTHER member must keep lending its whole floor.
+    R301 (legacy-coordinator-agent, 2026-11-22, DERIVATION.md "Master lanes lend
+    their reserved slots (2026-11-22, R301)"): the 2026-11-03 `lendingLimit: 0`
+    reservation idled 4 of 31 slots while pull-request and merge-queue work sat
+    gated. The master slices keep their floor and keep every preemption setting
+    at Never (the standing NEVER EVICT A HEALTHY RUNNING JOB directive); a master
+    workload inside its own nominal is admitted ahead of borrowers on the next
+    freed slot, without evicting anything.
     """
     lending = {
         document_name.group("name"): limit.group("limit")
@@ -467,7 +471,7 @@ def test_master_push_slice_reserves_its_quota_and_lends_none_of_it() -> None:
         and (limit := _LENDING_LIMIT.search(document)) is not None
     }
     masters = {"livespec-dev-tooling-master-cq", "livespec-orchestrator-master-cq"}
-    assert lending == {name: "0" for name in masters}
+    assert lending == {}
     for name in masters:
         master = next(
             document
