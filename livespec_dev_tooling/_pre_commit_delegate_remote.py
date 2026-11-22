@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from returns.result import Failure
+# `returns` is VENDORED, not installed; a direct module invocation must make
+# its sibling package importable before importing the Result implementation.
+_VENDOR_DIR = Path(__file__).resolve().parent / "_vendor"
+if str(_VENDOR_DIR) not in sys.path:
+    sys.path.insert(0, str(_VENDOR_DIR))
+
+from returns.result import Failure  # noqa: E402  — vendor-path-aware import.
 
 __all__: list[str] = ["run_remote"]
 

@@ -67,7 +67,14 @@ def run_pre_commit(*, repo_root: Path) -> PreCommitVerdict:
     if not enabled:
         return PreCommitVerdict(local=True, reason="delegated_pre_commit is not enabled")
     if not gates_kubeconfig_readable():
-        return PreCommitVerdict(local=True, reason="gates kubeconfig is not readable")
+        return _report_outcome(
+            verdict=PreCommitVerdict(
+                local=True,
+                reason="gates kubeconfig is not readable",
+            ),
+            outcome=GATE_OUTCOME_NO_VERDICT,
+            repository=_repository_name(repo_root=repo_root),
+        )
     tree_hash = _staged_tree_hash(repo_root=repo_root)
     if not tree_hash:
         return _report_outcome(
