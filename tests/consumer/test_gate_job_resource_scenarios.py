@@ -146,7 +146,7 @@ def test_declared_cpu_and_parallelism_render_into_the_gate_job_and_coverage_work
     env = {entry["name"]: entry["value"] for entry in gate["env"] if "value" in entry}
 
     assert gate["resources"] == {
-        "requests": {"cpu": "9", "memory": "6Gi"},
+        "requests": {"cpu": "9", "memory": "6Gi", "ephemeral-storage": "2560Mi"},
         "limits": {"memory": "6Gi"},
     }
     assert env["LIVESPEC_TEST_PARALLELISM"] == "8"
@@ -188,7 +188,7 @@ def test_undeclared_resources_render_the_default_gate_job_size(*, tmp_path: Path
     env = {entry["name"]: entry["value"] for entry in gate["env"] if "value" in entry}
 
     assert gate["resources"] == {
-        "requests": {"cpu": "5", "memory": "6Gi"},
+        "requests": {"cpu": "5", "memory": "6Gi", "ephemeral-storage": "2560Mi"},
         "limits": {"memory": "6Gi"},
     }
     assert env["LIVESPEC_TEST_PARALLELISM"] == "4"
@@ -350,7 +350,7 @@ def test_an_unreadable_queue_does_not_block_a_gate_with_no_cpu_or_memory_declara
             if container["name"] == "gate"
         )
         assert gate["resources"] == {
-            "requests": {"cpu": "5", "memory": "6Gi"},
+            "requests": {"cpu": "5", "memory": "6Gi", "ephemeral-storage": "2560Mi"},
             "limits": {"memory": "6Gi"},
         }
     assert _registered_test(heading=_UNREADABLE_QUEUE_HEADING).endswith(
@@ -392,7 +392,7 @@ def test_red_leg_replay_uses_the_small_job_size_despite_declared_resources(
     env = {entry["name"]: entry["value"] for entry in gate["env"] if "value" in entry}
 
     assert gate["resources"] == {
-        "requests": {"cpu": "2", "memory": "3Gi"},
+        "requests": {"cpu": "2", "memory": "3Gi", "ephemeral-storage": "2560Mi"},
         "limits": {"memory": "3Gi"},
     }
     assert env["LIVESPEC_TEST_PARALLELISM"] == "1"

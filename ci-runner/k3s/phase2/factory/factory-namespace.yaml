@@ -100,6 +100,30 @@ spec:
     limits.memory: 190750Mi
     pods: "42"
 ---
+# The scheduler's sight of node disk for factory sandbox pods
+# (livespec-dev-tooling-tsde55): every sandbox container that declares no
+# ephemeral-storage request is given this one, so a node whose allocatable
+# ephemeral-storage is fully requested leaves a further sandbox Pending with an
+# insufficient ephemeral-storage reason instead of the kubelet evicting running
+# pods at DiskPressure (poweredge-xubuntu, 2026-11-19). The sandbox driver
+# sets no such request itself, which is why the default lives here. Only a
+# REQUEST: a default limit would make the kubelet evict a sandbox for disk use.
+# 3Gi = the measured per-pod peak (2.12 GiB, gmktec-xubuntu, 2026-11-21) times
+# 1.25, rounded up to 1 GiB; ../EPHEMERAL-STORAGE.md carries the measurement.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: factory-ephemeral-storage
+  namespace: factory
+  labels:
+    app.kubernetes.io/managed-by: livespec-ci-runner-factory
+    livespec.workitem: tsde55
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        ephemeral-storage: 3Gi
+---
 # ./DERIVATION.md "The egress targets" — default-deny ingress, and egress only
 # to cluster DNS, the tailnet (the beads Dolt tenant and the telemetry
 # receiver), and TCP 443 off-site for the sandbox image registry. Enforced by

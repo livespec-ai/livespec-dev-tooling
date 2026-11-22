@@ -23,6 +23,7 @@
 #   render-gate-job.sh --repo-root PATH --tree-hash SHA [--repo NAME]
 #                      [--gated-repository OWNER/REPO]
 #                      [--source-url URL] [--cpu N] [--memory SIZE]
+#                      [--ephemeral-storage SIZE]
 #                      [--parallelism N] [--ttl-seconds N] [--gate-ref REF]
 #                      [--livespec-core-ref REF]
 #                      [--check-suite 'RECIPE' ...]
@@ -113,6 +114,12 @@ PROCESS_TREE_WATCHDOG="${GATE_PROCESS_TREE_WATCHDOG_SH:-${SCRIPT_DIR}/gate-proce
 WORKLOAD_ARCH_CONF="${WORKLOAD_ARCH_CONF:-${SCRIPT_DIR}/../workload-arch.conf}"
 
 repo_root=""; tree_hash=""; repo=""; source_url=""; gated_repository=""
+# The ephemeral-storage request is the scheduler'"'"'s sight of node disk: a full
+# node refuses a new gate pod instead of the kubelet evicting running ones
+# (livespec-dev-tooling-tsde55). 2560Mi = the measured per-pod peak, 1.62 GiB,
+# times 1.25, rounded up to 0.5 GiB; ../EPHEMERAL-STORAGE.md carries the
+# measurement.
+ephemeral_storage="2560Mi"
 cpu="5"; memory="6Gi"; parallelism="4"; ttl_seconds="3600"; gate_ref=""
 livespec_core_ref=""
 queue="gates-lq"; repro_stack_interval=""; repro_image="@@unset@@"; repro_node="@@unset@@"; repro_command=""
@@ -144,6 +151,7 @@ while [ $# -gt 0 ]; do
     --source-url)        source_url="$2"; shift 2 ;;
     --cpu)               cpu="$2"; shift 2 ;;
     --memory)            memory="$2"; shift 2 ;;
+    --ephemeral-storage) ephemeral_storage="$2"; shift 2 ;;
     --parallelism)       parallelism="$2"; shift 2 ;;
     --ttl-seconds)       ttl_seconds="$2"; shift 2 ;;
     --gate-ref)          gate_ref="$2"; shift 2 ;;
@@ -975,6 +983,7 @@ substitute GATE_ARCHES       "${gate_arches//,/, }"
 substitute QUEUE             "${queue}"
 substitute CPU               "${cpu}"
 substitute MEMORY            "${memory}"
+substitute EPHEMERAL_STORAGE "${ephemeral_storage}"
 substitute PARALLELISM       "${parallelism}"
 substitute CACHE_KILL_SWITCH "${cache_kill_switch}"
 substitute TTL_SECONDS       "${ttl_seconds}"
