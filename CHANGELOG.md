@@ -58,6 +58,15 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.235.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.235.0...v1.235.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **ansible:** the caam_delivery_push role installs the pinned caam binary (livespec-dev-tooling-gtx5nl) ([d0cf7db](https://github.com/livespec-ai/livespec-dev-tooling/commit/d0cf7db823f3761bc0080dc797c848daef83dee8))
+* **ci-runner:** apply-triggers.sh refuses xtrace, keeps the key out of argv, and skips a missing dataset instead of aborting the run (livespec-dev-tooling-a7rwrn) ([c21dd74](https://github.com/livespec-ai/livespec-dev-tooling/commit/c21dd74b405cf7103c4b90b4285f75c4681cda87))
+* mailbox read needs no sender seat ([fd8775a](https://github.com/livespec-ai/livespec-dev-tooling/commit/fd8775aae336e1eab8f3cf0df581bcd4bb870726))
+
 ## [1.235.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.234.1...v1.235.0) (2026-11-22)
 
 
