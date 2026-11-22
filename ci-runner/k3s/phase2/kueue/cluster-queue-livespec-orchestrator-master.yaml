@@ -22,8 +22,10 @@ spec:
           resources:
             - name: "ci-runner.io/churn-slot"
               nominalQuota: 1
-              # Reclaim is Never, so lending this slot could delay master CI.
-              lendingLimit: 0
+              # lendingLimit removed 2026-11-22 (R301): the slot lends like every peer's.
+              # Reclaim stays Never; a master workload inside its own nominal is
+              # admitted ahead of borrowers on the next freed slot. DERIVATION.md
+              # "Master lanes lend their reserved slots (2026-11-22, R301)".
         - name: churn-slot-worker-arm64-flavor
           resources:
             - name: "ci-runner.io/churn-slot"
@@ -38,7 +40,6 @@ spec:
           resources:
             - name: memory
               nominalQuota: 11Gi
-              lendingLimit: 0
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue

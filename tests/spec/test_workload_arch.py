@@ -117,7 +117,9 @@ def test_orchestrator_master_push_has_a_dedicated_converged_lane() -> None:
     assert "name: livespec-orchestrator-master-lq" in queue_text
     assert "clusterQueue: livespec-orchestrator-master-cq" in queue_text
     assert "nominalQuota: 1" in queue_text
-    assert "lendingLimit: 0" in queue_text
+    # R301, 2026-11-22: the master lane lends its floor; reclaim stays Never.
+    assert "\n              lendingLimit:" not in queue_text
+    assert "reclaimWithinCohort: Never" in queue_text
 
     converge = _CONVERGE.read_text(encoding="utf-8")
     assert (

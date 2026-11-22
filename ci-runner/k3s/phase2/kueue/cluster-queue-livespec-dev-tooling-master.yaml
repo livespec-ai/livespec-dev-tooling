@@ -26,6 +26,9 @@
 #   gmktec 6 + hp 4 + gamingpc 3 (DERIVATION.md "Per-node CPU budget cut:
 #   cohort 30 (2026-11-13)"); this slice's 3 is unchanged.
 #
+# SUPERSEDED 2026-11-22 (R301): this slice now LENDS its floor like every peer;
+# DERIVATION.md "Master lanes lend their reserved slots (2026-11-22, R301)".
+# The paragraph below is the 2026-11-03 reasoning, kept for the record.
 # lendingLimit: 0 — the one cohort member that lends NOTHING. Every other
 # queue lends its whole unused floor (Kueue's default). Reclaim is Never in this
 # cohort (DERIVATION.md "NEVER EVICT A HEALTHY RUNNING JOB"), so a lent master
@@ -67,9 +70,9 @@ spec:
         - name: churn-slot-flavor
           resources:
             - name: "ci-runner.io/churn-slot"
-              # Ruled reservation, 2026-11-03: see DERIVATION.md.
+              # Ruled reservation, 2026-11-03; made lendable 2026-11-22 (R301): see
+              # DERIVATION.md "Master lanes lend their reserved slots (2026-11-22, R301)".
               nominalQuota: 3
-              lendingLimit: 0
     # One memory flavor with NO nodeLabels: Kueue caps total runner memory fleet-wide without choosing a
     # node (a hostname-pinned flavor per node made Kueue pin runners to the first flavor that fit while
     # the slots live on the node). The scheduler places by the pod memory request and the per-node
@@ -80,7 +83,6 @@ spec:
           resources:
             - name: memory
               nominalQuota: 33Gi
-              lendingLimit: 0
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
