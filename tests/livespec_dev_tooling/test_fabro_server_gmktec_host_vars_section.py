@@ -87,7 +87,8 @@ _DEPLOYED_COMMIT = "9f6c38f"
 # 2026-11-12: every gmktec instance is pinned to d22808f, the 0.408 build the
 # candidate proved (bd-ib-tcdmkr).
 # 2026-11-21: bee5378, d22808f plus only the sandbox-leak fixes (bd-ib-g6dkdt: fork PRs 42, 43).
-_FLEET_COMMIT = "bee5378"
+# 2026-11-22: 2b0542c, bee5378 plus the lost-sandbox resume and the checkpoint HEAD-race retry (bd-ib-mzov7o).
+_FLEET_COMMIT = "2b0542c"
 # The candidate's build: the carrier tip on that branch, the fleet build plus the
 # node name on run_turn spans (thewoolleyman/fabro#14). The maintainer ruled it
 # onto the candidate and fabro-server-mi-homelab on 2026-11-02 (plan
