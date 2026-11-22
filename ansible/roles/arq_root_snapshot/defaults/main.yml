@@ -26,3 +26,13 @@ arq_root_snapshot_on_calendar: "*-*-* 03:00:00 America/Los_Angeles"
 # not the prose.
 arq_root_snapshot_documentation_url: >-
   file:/home/ubuntu/workspace/vps-info/services/arq-vps-root-snapshot/README.md
+
+# Absolute host paths kept out of the snapshot copy, on top of the runner's
+# built-in excludes. The service unit hands the list to the runner, which
+# excludes each from the rsync that covers it, records it in the manifest's
+# excluded_paths line, and (through --delete-excluded) removes any copy already
+# in the snapshot tree. Dolt keeps its backup-verification scratch (tens of GB
+# after failed verifications) here; copying it onto the same disk filled the
+# root filesystem on 2026-11-22 (livespec-dev-tooling-gznrq2).
+arq_root_snapshot_extra_excluded_paths:
+  - /var/lib/doltdb/backup-verification
