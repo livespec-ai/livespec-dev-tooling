@@ -869,8 +869,15 @@ The two directives read together, because each is incomplete without the other:
 - livespec's ci-gate-discipline directive (`ci-gate-discipline.md`, in that
   repo's `.ai/` guidance tree) MANDATES that when master CI is red and
   local commits are blocked by that red, the revert is created SERVER-SIDE —
-  through the forge's own revert API — precisely because no local hook mediates
-  it. It forbids adding any lever, flag or severity knob without exception.
+  as one signed GraphQL `createCommitOnBranch` restore commit — precisely
+  because no local hook mediates it. It must restore every path the reverted
+  commits changed to the parent of the earliest reverted commit that landed on
+  master, and its body must contain `This reverts commit <that commit's sha>.`
+  on its own line. Use it only when no later master commit changed any of those
+  paths. GitHub's pull-request Revert button and its GraphQL `revertPullRequest`
+  mutation (`gh pr revert`) leave unsigned commits, which this check refuses;
+  prescribe neither. The directive forbids adding any lever, flag or severity
+  knob without exception.
 - This protocol's commit-range gate requires TDD trailer evidence on every
   commit touching product impl `.py`, and those trailers are stamped by the
   local hook.
