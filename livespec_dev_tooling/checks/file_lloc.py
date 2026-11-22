@@ -95,7 +95,7 @@ from livespec_dev_tooling.checks._config_load import (  # noqa: E402
     resolve_check_context_or_report,
 )
 
-__all__ = ["LLOC_HARD_CEILING", "count_lloc"]
+__all__: list[str] = ["LLOC_HARD_CEILING", "count_lloc"]
 
 CHECK_PURITY = "tree-pure"
 
