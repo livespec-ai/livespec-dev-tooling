@@ -69,6 +69,7 @@ case "$*" in
         printf '%s\\n' "${AUTHORITY_MEMBERS:-}"
         exit "${AUTHORITY_EXIT:-0}"
         ;;
+    *"green_token pre-push-reuse"*) exit 3 ;;
 esac
 exit 1
 """
@@ -109,6 +110,7 @@ def _run_pre_push(
         _ = stub.write_text(body, encoding="utf-8")
         stub.chmod(0o755)
     log = tmp_path / "invocations.log"
+    _ = (tmp_path / "check-targets.txt").write_text("check-example\n", encoding="utf-8")
     env = dict(os.environ)
     env.update(
         {
