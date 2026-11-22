@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from pathlib import Path
 
 from livespec_dev_tooling.check_inventory import annotation_values, inventory_lines
+from livespec_dev_tooling.incident_hook_process import HookRefusalError
 from livespec_dev_tooling.incident_local_gates import GateSpec
 
 __all__: list[str] = ["inventory_gates", "precondition_names", "timing_classes"]
@@ -87,3 +90,24 @@ def inventory_gates(*, inventory: str) -> tuple[GateSpec, ...]:
         )
         for name, timing in timing_classes(inventory=inventory).items()
     )
+
+
+def declared_inventory(
+    *, repo: Path, repository: str, gates: Callable[..., tuple[GateSpec, ...]]
+) -> tuple[GateSpec, ...]:
+    declared = repo / "check-targets.txt"
+    if not declared.is_file():
+        message = (
+            f"incident-inventory-undeclared: {repository} declares no check-targets.txt;"
+            " commit a measured check-targets.txt whose members each carry a"
+            " `# incident-timing: fast|slow|not-applicable` annotation"
+        )
+        raise HookRefusalError(message)
+    text = declared.read_text()
+    if not inventory_lines(text=text):
+        message = f"incident-inventory-empty: {repository}'s check-targets.txt lists no members"
+        raise HookRefusalError(message)
+    try:
+        return gates(inventory=text)
+    except ValueError as error:
+        raise HookRefusalError(str(error)) from error
