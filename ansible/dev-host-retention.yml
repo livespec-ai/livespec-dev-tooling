@@ -1,0 +1,27 @@
+---
+# The dev host disk retention and capacity check on every host that runs uv
+# interactively or as a dispatcher, from the same committed role
+# (livespec-dev-tooling-tr5jkd; SPECIFICATION/non-functional-requirements.md
+# section "Dev host disk retention").
+#
+# ansible/dev-host.yml already includes the role for `dev_hosts` (the VPS) as
+# one of its many roles. This play is the role ALONE, so a host that the full
+# dev-host play does not govern can take it: hetzner-xubuntu (a member of
+# `fabro_dispatch_clients`; its provisioning otherwise lives in
+# hetzner-xubuntu-info) measured 95 percent full on 2026-11-22.
+#
+#   just ansible-drift ansible/dev-host-retention.yml --limit <group-or-host>
+#
+# NOT covered, by decision: `ci_pool` and `sandbox_hosts` nodes carry their own
+# disk_guard and image-prune roles and do not run uv for interactive work; the
+# gap is recorded in livespec-dev-tooling-tr5jkd.
+- name: Dev host disk retention and capacity check
+  hosts: dev_host_retention_hosts
+  gather_facts: true
+  vars_files:
+    # claude_ntfy_topic, which the capacity check publishes to, is a default of
+    # the claude_ntfy role; read it from there rather than copy the value.
+    - roles/claude_ntfy/defaults/main.yml
+  roles:
+    - role: dev_host_retention
+      tags: [dev_host_retention]

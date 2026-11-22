@@ -511,3 +511,79 @@ def test_capacity_check_alerts_tmp_once_without_alerting_root(*, tmp_path: Path)
     assert "75%" in notices and "25 KiB" in notices
     assert "/ used" not in notices
     assert "OnUnitActiveSec=15min" in _CAPACITY_TIMER.read_text(encoding="utf-8")
+
+
+def _capacity_env(*, tmp_path: Path, bin_dir: Path) -> dict[str, str]:
+    return os.environ | {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "LIVESPEC_DEV_HOST_CAPACITY_STATE_DIR": str(tmp_path / "state"),
+        "LIVESPEC_DEV_HOST_NTFY_TOPIC": "test-topic",
+        "LIVESPEC_DEV_HOST_ROOT_THRESHOLD_PERCENT": "85",
+        "LIVESPEC_DEV_HOST_ALERT_OWNER": "owner-seat-x",
+        "LIVESPEC_DEV_HOST_ALERT_RUNBOOK": "runbook/path.md",
+    }
+
+
+def _capacity_stubs(*, tmp_path: Path) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub(
+        directory=bin_dir,
+        name="df",
+        body="#!/bin/sh\nprintf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n'\n"
+        "printf '/dev/root 100 90 10 90%% /\\n'\n",
+    )
+    _stub(
+        directory=bin_dir,
+        name="curl",
+        body=f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {tmp_path / 'curl.log'}\n",
+    )
+    return bin_dir
+
+
+def test_capacity_alert_names_owner_and_runbook_and_is_recorded_in_the_ledger(
+    *, tmp_path: Path
+) -> None:
+    """A seat reads the alert from the epic comment; the push carries the same text."""
+    bin_dir = _capacity_stubs(tmp_path=tmp_path)
+    wrapper = tmp_path / "wrapper.sh"
+    wrapper.write_text(
+        f"#!/bin/sh\nprintf '%s\\n' \"$PWD $*\" >> {tmp_path / 'ledger.log'}\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    env = _capacity_env(tmp_path=tmp_path, bin_dir=bin_dir) | {
+        "LIVESPEC_DEV_HOST_ALERT_LEDGER_EPIC": "epic-1",
+        "LIVESPEC_DEV_HOST_ALERT_LEDGER_DIR": str(tmp_path),
+        "LIVESPEC_DEV_HOST_ALERT_LEDGER_WRAPPER": str(wrapper),
+    }
+
+    done = subprocess.run(
+        ["bash", str(_CAPACITY)], env=env, capture_output=True, text=True, check=False
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    push = (tmp_path / "curl.log").read_text(encoding="utf-8")
+    assert "Owner: owner-seat-x" in push and "Runbook: runbook/path.md" in push, push
+    ledger = (tmp_path / "ledger.log").read_text(encoding="utf-8")
+    assert "-- bd comment epic-1" in ledger, ledger
+    assert "90%" in ledger and "owner-seat-x" in ledger and "runbook/path.md" in ledger, ledger
+
+
+def test_capacity_alert_degrades_to_ntfy_with_a_warning_when_the_wrapper_is_missing(
+    *, tmp_path: Path
+) -> None:
+    bin_dir = _capacity_stubs(tmp_path=tmp_path)
+    env = _capacity_env(tmp_path=tmp_path, bin_dir=bin_dir) | {
+        "LIVESPEC_DEV_HOST_ALERT_LEDGER_EPIC": "epic-1",
+        "LIVESPEC_DEV_HOST_ALERT_LEDGER_DIR": str(tmp_path),
+        "LIVESPEC_DEV_HOST_ALERT_LEDGER_WRAPPER": str(tmp_path / "absent-wrapper"),
+    }
+
+    done = subprocess.run(
+        ["bash", str(_CAPACITY)], env=env, capture_output=True, text=True, check=False
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "WARNING: ledger record unavailable" in done.stdout, done.stdout
+    assert "Owner: owner-seat-x" in (tmp_path / "curl.log").read_text(encoding="utf-8")

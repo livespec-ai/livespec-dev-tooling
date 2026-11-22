@@ -87,6 +87,9 @@
       - dev_host_retention_tmp_threshold_percent | int <= 100
       - dev_host_retention_bulk_dump_cap_bytes | int > 0
       - dev_host_retention_capacity_repeat_interval_seconds | int > 0
+      - dev_host_retention_uv_cache_max_gb | float > 0
+      - dev_host_retention_alert_owner | string | length > 0
+      - dev_host_retention_alert_runbook | string | length > 0
     fail_msg: >-
       Scratch retention, capacity thresholds, bulk-dump cap and repeat interval
       must all be positive; thresholds cannot exceed 100 percent.
