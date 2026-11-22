@@ -618,6 +618,11 @@ for f in "${KUEUE_DIR}"/cluster-queue-*.yaml; do
   [ -e "$f" ] || { echo "FATAL: no cluster-queue-*.yaml found in ${KUEUE_DIR}"; exit 1; }
   kubectl apply -f "$f"
 done
+# Applying the edited reproduction ClusterQueue first drops these retired
+# flavors from its quota references. `apply` never prunes objects, so remove
+# them explicitly; --ignore-not-found keeps every later converge idempotent.
+kubectl delete resourceflavor gates-repro-gamingpc-flavor gates-repro-hp-flavor \
+  --ignore-not-found --wait=false
 # The container-worker queues, whose quota is the enrolled workers' derived
 # churn slots read from the Nodes (livespec-dev-tooling-ko26ez.7).
 "${KUEUE_DIR}/converge-worker-queues.sh"
