@@ -58,6 +58,19 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.234.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.233.0...v1.234.0) (2026-11-22)
+
+
+### Features
+
+* **ci-runner:** a 15-minute trigger on the control-node role host applies merged CI-stack changes, holds credential ranges and reads drift back (livespec-dev-tooling-ctete5) ([ff3e42d](https://github.com/livespec-ai/livespec-dev-tooling/commit/ff3e42d29bdf820a2e5f2af7531ef1858a232248))
+
+
+### Bug Fixes
+
+* **homelab-worker:** the snapshot refusal names the archive-snapshot action that clears it (livespec-dev-tooling-ozmvjn) ([f05cd31](https://github.com/livespec-ai/livespec-dev-tooling/commit/f05cd31866ee587d420ad48feb41f765887cb96d))
+* the recovery authorization read counts only the always-bypass App, not the incident-merge pull_request actor (livespec-dev-tooling-42ogah) ([3d2e135](https://github.com/livespec-ai/livespec-dev-tooling/commit/3d2e1359b4afa7541cc5b3b9440e0f6f4866ec97))
+
 ## [1.233.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.232.0...v1.233.0) (2026-11-21)
 
 
