@@ -456,10 +456,11 @@ def test_a_host_that_cannot_mint_the_token_refuses_the_push_as_a_missing_verdict
     assert events == [
         {
             "outcome": GATE_OUTCOME_NO_VERDICT,
-            "repository": None,
-            "tree_hash": None,
-            "job_name": None,
-        }
+                "repository": None,
+                "tree_hash": None,
+                "job_name": None,
+                "stage": "pre-push",
+            }
     ]
 
 
