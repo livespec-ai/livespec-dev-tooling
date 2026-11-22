@@ -23,6 +23,16 @@ fifteen minutes. The stall window is shortened through its own documented settin
 outer 270 s `timeout` is replaced by a `timeout` shim that records the bound the
 client asked for and runs the real `timeout` with a shorter one; the test asserts the
 recorded bound is the production one and is inside the production stall window.
+
+The hung admission read decides the stamp's freshness by a rendezvous, never by a
+fixed sleep against the heartbeat's 30 s period. A fixed sleep measures wall time,
+and a loaded runner that starts the heartbeat a second late made it read a stamp
+the heartbeat had not yet renewed (livespec-dev-tooling-qc3ynb: `assert 30 < 10`
+in CI). Instead the hung `kubectl` waits for the heartbeat's start-up touch, ages
+the stamp again, and waits for the next touch, which only the heartbeat's periodic
+renewal can make. Only then does the shim expire the real `timeout`, by sending it
+`SIGALRM`, its own expiry signal. The shortened bound is a backstop that ends the
+read when the stamp is never renewed, and the test then fails.
 """
 
 from __future__ import annotations
@@ -83,9 +93,8 @@ case " $* " in
     ;;
   *" get job "*)
     if test "${{STUB_HANG:-}}" = admission; then
-      sleep 31
-      stamp_mtime=$(stat -c %Y "$LIVESPEC_GATE_RUN_PROGRESS_STAMP")
-      echo $(( $(date +%s) - stamp_mtime )) > "$state/stamp-age-during-hang"
+      python3 "$(dirname "$0")/renewal-rendezvous" "$LIVESPEC_GATE_RUN_PROGRESS_STAMP" \
+        "$state/stamp-renewed-during-hang"
       exec sleep 3600
     fi
     printf '%s\\n' '{_RUNNING}'
@@ -96,14 +105,45 @@ esac
 
 _WRAPPER_STUB = '#!/bin/sh\nexec "$@"\n'
 
+# Run by the hung admission read. The test aged the stamp by 1000 s, so a touch
+# first shows as the stamp turning fresh: that is the heartbeat's start-up touch,
+# however late a loaded runner starts it. The stamp is then aged again, so the
+# next touch can only be the heartbeat's periodic renewal. Seeing it is the
+# rendezvous: the record is written, and the `timeout` shim then expires the read.
+# A heartbeat that never renews leaves no record, and the backstop ends the read.
+_RENEWAL_RENDEZVOUS = """import os
+import sys
+import time
+from pathlib import Path
+
+stamp = Path(sys.argv[1])
+record = Path(sys.argv[2])
+while time.time() - stamp.stat().st_mtime > 500:
+    time.sleep(0.1)
+aged = time.time() - 1000
+os.utime(stamp, (aged, aged))
+aged_ns = stamp.stat().st_mtime_ns
+while stamp.stat().st_mtime_ns == aged_ns:
+    time.sleep(0.1)
+record.write_text("renewed", encoding="utf-8")
+"""
+
 # Records the bound the client asked for, then runs the real `timeout` with the
-# shorter bound the test chose, so a request that never returns still ends.
+# shorter bound the test chose, so a request that never returns still ends. When
+# `STUB_EXPIRE_ON` names a file, the real `timeout` is expired (SIGALRM is its own
+# expiry signal, so it ends the command and exits 124) as soon as that file
+# appears, and the shorter bound is only the backstop.
 _TIMEOUT_SHIM = """#!/bin/sh
 printf '%s\\n' "$1" >> "$STUB_STATE/timeout-bounds.log"
 bound=$1
 shift
 if test "$bound" = "{production}"; then bound="$SHORT_OUTER_BOUND"; fi
-exec "{real_timeout}" "$bound" "$@"
+if test -z "${{STUB_EXPIRE_ON:-}}"; then exec "{real_timeout}" "$bound" "$@"; fi
+"{real_timeout}" "$bound" "$@" &
+timer=$!
+while ! test -e "$STUB_EXPIRE_ON" && kill -0 "$timer" 2>/dev/null; do sleep 0.1; done
+kill -ALRM "$timer" 2>/dev/null || true
+wait "$timer"
 """
 
 _DRIVER = """
@@ -140,7 +180,11 @@ def _install_cluster(*, tmp_path: Path, real_timeout: str | None = None) -> tupl
     state = tmp_path / "stub-state"
     _ = stub_bin.mkdir()
     _ = state.mkdir()
-    stubs = {GATES_WRAPPER: _WRAPPER_STUB, "kubectl": _KUBECTL_STUB}
+    stubs = {
+        GATES_WRAPPER: _WRAPPER_STUB,
+        "kubectl": _KUBECTL_STUB,
+        "renewal-rendezvous": _RENEWAL_RENDEZVOUS,
+    }
     if real_timeout is not None:
         stubs["timeout"] = _TIMEOUT_SHIM.format(
             production=_PRODUCTION_OUTER_BOUND, real_timeout=real_timeout
@@ -259,15 +303,19 @@ def test_a_hung_admission_read_is_timed_out_before_the_stall_window_and_the_stam
     """Scenario: a hung kubectl request on the admission wait is timed out and the wait ends.
 
     The client's `kubectl get job` never returns. The client asks for its 270 s
-    bound, which is inside the 900 s stall window; the shim runs it as 36 s, so the
-    request ends there. While it hung, the progress stamp (aged by the test) was
-    renewed by the heartbeat, and the wait ended in a no-verdict failure naming the
-    timed-out call rather than hanging.
+    bound, which is inside the 900 s stall window. While the read hangs, the
+    progress stamp (aged by the test, then aged again after the heartbeat's start-up
+    touch) must be renewed by the heartbeat's periodic touch; that rendezvous, not
+    a wall-clock age, is the freshness claim, so a slow runner cannot fail it. The
+    shim then expires the read's real `timeout`, with 150 s as the backstop for a
+    stamp that is never renewed, and the wait ends in a no-verdict failure naming
+    the timed-out call rather than hanging.
     """
     real_timeout = shutil.which("timeout")
     assert real_timeout is not None
     stub_bin, state = _install_cluster(tmp_path=tmp_path, real_timeout=real_timeout)
     root, mirror = _gated_repository(tmp_path=tmp_path)
+    renewed = state / "stamp-renewed-during-hang"
     stamp = tmp_path / "progress.stamp"
     stamp.touch()
     aged = time.time() - 1000
@@ -279,7 +327,8 @@ def test_a_hung_admission_read_is_timed_out_before_the_stall_window_and_the_stam
     monkeypatch.setenv("LIVESPEC_GATE_RUN_PROGRESS_STAMP", str(stamp))
     monkeypatch.setenv("STUB_STATE", str(state))
     monkeypatch.setenv("STUB_HANG", "admission")
-    monkeypatch.setenv("SHORT_OUTER_BOUND", "36s")
+    monkeypatch.setenv("SHORT_OUTER_BOUND", "150s")
+    monkeypatch.setenv("STUB_EXPIRE_ON", str(renewed))
     request = GateRunRequest(
         repo_root=root,
         mirror_url=str(mirror),
@@ -295,11 +344,11 @@ def test_a_hung_admission_read_is_timed_out_before_the_stall_window_and_the_stam
 
     assert isinstance(outcome, Failure)
     assert "kubectl admission-state read timed out" in outcome.failure().detail
-    assert elapsed < 80.0
+    assert renewed.is_file(), "the heartbeat never renewed the stamp while the read hung"
+    assert elapsed < 240.0
     bounds = (state / "timeout-bounds.log").read_text(encoding="utf-8").split()
     assert bounds[0] == _PRODUCTION_OUTER_BOUND
     assert int(_PRODUCTION_OUTER_BOUND.removesuffix("s")) < _PRODUCTION_STALL_WINDOW_SECONDS
-    assert int((state / "stamp-age-during-hang").read_text(encoding="utf-8")) < 10
 
 
 def test_a_hung_terminal_watch_is_timed_out_and_the_wait_ends_naming_the_timed_out_call(
