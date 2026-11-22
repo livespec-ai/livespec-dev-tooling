@@ -11,6 +11,10 @@
 #             WINDOW_STATE_DIR with the UTC time it was taken, as the window's
 #             before-state. Refuses to overwrite an existing snapshot, so the
 #             before-state is never replaced by a mid-window state.
+#   lift-hold lift the admission hold from the rejoined worker (a re-registered node
+#             comes back under homelab-worker.livespec.dev/admission=hold), by running
+#             lift-admission-hold.sh for the host. The lift is a step of the rejoin
+#             procedure, not a wait: run it after join.
 #   archive-snapshot  move a before-snapshot that has gone stale (older than
 #             WINDOW_MAX_AGE_SECONDS) or cannot be read to gates-cq-before.<UTC>.json
 #             in WINDOW_STATE_DIR, so a new window can take its own snapshot. It
@@ -69,7 +73,7 @@ say() {
   printf '%s: %s\n' "$prog" "$*"
 }
 
-[ "$#" -eq 2 ] || die "usage: $prog snapshot|archive-snapshot|join|drill|remove|check|revert <host>"
+[ "$#" -eq 2 ] || die "usage: $prog snapshot|archive-snapshot|join|lift-hold|drill|remove|check|revert <host>"
 action="$1"
 host="$2"
 case "$host" in
@@ -247,6 +251,7 @@ case "$action" in
     [ -n "${WINDOW_SERVER_CA:-}" ] || die "WINDOW_SERVER_CA is not set"
     exec "$scripts/join-worker.sh" "$host" --api-server "$WINDOW_API_SERVER" --server-ca "$WINDOW_SERVER_CA"
     ;;
+  lift-hold) exec "$scripts/lift-admission-hold.sh" "$host" ;;
   drill) exec "$scripts/departure-drill.sh" "$host" --confirm-depart "$node" ;;
   remove) exec "$scripts/remove-worker.sh" "$host" ;;
   check) do_check ;;

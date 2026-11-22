@@ -5,7 +5,7 @@ homelab_worker_window_confirm: ""
 homelab_worker_window_node_confirm: ""
 # archive-snapshot only: set to the node name to archive a snapshot still inside the age limit.
 homelab_worker_window_force_archive: ""
-homelab_worker_window_actions: [preflight, snapshot, archive-snapshot, join, drill, check, revert, remove]
+homelab_worker_window_actions: [preflight, snapshot, archive-snapshot, join, lift-hold, drill, check, revert, remove]
 
 # The delivered release directory (role homelab_worker_scripts).
 homelab_worker_window_release_dir: /Users/cwoolley/homelab-worker-release/current
