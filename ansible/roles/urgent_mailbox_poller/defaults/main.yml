@@ -1,0 +1,12 @@
+---
+# Host-level urgent mailbox alarm (plan ledger-mailbox-seat-channel, f5upsw).
+urgent_mailbox_poller_enabled: true
+urgent_mailbox_poller_user: ubuntu
+urgent_mailbox_poller_home: "/home/{{ urgent_mailbox_poller_user }}"
+urgent_mailbox_poller_unit: urgent-mailbox-poller.service
+urgent_mailbox_poller_command: /usr/local/bin/urgent-mailbox-poller
+urgent_mailbox_poller_dwell_seconds: 120
+urgent_mailbox_poller_ledger_cwd: "{{ urgent_mailbox_poller_home }}/workspace/livespec-dev-tooling"
+urgent_mailbox_poller_alarm_file: "{{ urgent_mailbox_poller_home }}/.local/state/urgent-mailbox-poller/alarms.jsonl"
+urgent_mailbox_poller_state_file: "{{ urgent_mailbox_poller_home }}/.local/state/urgent-mailbox-poller/state.json"
+urgent_mailbox_poller_coordinator_epic: livespec-dev-tooling-6tgd2z

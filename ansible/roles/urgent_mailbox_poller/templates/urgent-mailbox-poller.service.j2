@@ -1,0 +1,22 @@
+# Managed by livespec-dev-tooling (role urgent_mailbox_poller).
+# Reads only unread urgent ledger-mailbox records. It writes alarms but never types into a pane
+# and never answers a dialog.
+[Unit]
+Description=Out-of-band alarm for overdue urgent ledger mailbox messages
+After=network.target
+
+[Service]
+Type=simple
+User={{ urgent_mailbox_poller_user }}
+Environment=HOME={{ urgent_mailbox_poller_home }}
+Environment=PATH={{ urgent_mailbox_poller_home }}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=URGENT_MAILBOX_LEDGER_CWD={{ urgent_mailbox_poller_ledger_cwd }}
+Environment=URGENT_MAILBOX_ALARM_FILE={{ urgent_mailbox_poller_alarm_file }}
+Environment=URGENT_MAILBOX_STATE_FILE={{ urgent_mailbox_poller_state_file }}
+Environment=URGENT_MAILBOX_COORDINATOR_EPIC={{ urgent_mailbox_poller_coordinator_epic }}
+ExecStart={{ urgent_mailbox_poller_command }} --dwell {{ urgent_mailbox_poller_dwell_seconds }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

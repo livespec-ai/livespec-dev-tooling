@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+"""Alarm unread urgent ledger-mailbox messages without touching a seat.
+
+This is deliberately a host service, rather than a harness hook: a stopped or
+wedged seat must not be able to suppress an overdue urgent-message alarm.  It
+only reads the mailbox table, writes the journal/alarm/ledger-comment sinks,
+and has no pane or dialog integration.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import tempfile
+import time
+from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+DWELL_SECONDS = 120
+INTERVAL_SECONDS = 15
+COORDINATOR_EPIC = "livespec-dev-tooling-6tgd2z"
+LEDGER_WRAPPER = "/usr/local/bin/with-livespec-env.sh"
+_NON_JSON_REPLY = "bd sql returned non-JSON output"
+_BAD_RECORDS_REPLY = "bd sql did not return mailbox records"
+_LEDGER_UNAVAILABLE = "ledger unavailable"
+_RETRY_ATTEMPTS = 2
+
+
+class LedgerError(Exception):
+    """The mailbox ledger could not be read or a comment could not be written."""
+
+
+def log(event: str, **fields: object) -> None:
+    """Emit one structured journal line (systemd collects stdout)."""
+    print(  # noqa: T201 -- stdout is the service's journal sink.
+        json.dumps(
+            {
+                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "event": event,
+                **fields,
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+
+
+def _load_state(path: Path) -> dict[str, dict[str, bool]]:
+    try:
+        decoded = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, json.JSONDecodeError) as error:
+        log("alarm_state_load_failed", error=str(error))
+        return {}
+    if not isinstance(decoded, dict):
+        log("alarm_state_load_failed", error="state is not an object")
+        return {}
+    return {
+        message_id: {key: value for key, value in value.items() if type(value) is bool}
+        for message_id, value in decoded.items()
+        if isinstance(message_id, str) and isinstance(value, dict)
+    }
+
+
+def _save_state(path: Path, state: Mapping[str, Mapping[str, bool]]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    except OSError as error:
+        log("alarm_state_save_failed", error=str(error))
+
+
+def _append_alarm(path: Path, *, message: Mapping[str, object], age: int) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "event": "urgent_mailbox_alarm",
+                        "message_id": message["id"],
+                        "from": message.get("from"),
+                        "to": message.get("to"),
+                        "sent_at": message.get("sent_at"),
+                        "age_seconds": age,
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+    except OSError as error:
+        log("alarm_file_failed", error=str(error), message_id=message.get("id"))
+        return False
+    return True
+
+
+def _run(command: Sequence[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(  # noqa: S603 -- argv is constructed from controlled role settings.
+            command, cwd=cwd, capture_output=True, text=True, timeout=60, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise LedgerError(str(error)) from error
+
+
+def fetch_unread_urgent(*, wrapper: str, cwd: Path) -> Sequence[Mapping[str, object]]:
+    """Read, but never stamp, every currently unread urgent mailbox record."""
+    sql = (
+        "SELECT id, `from`, `to`, urgency, body, sent_at, read_at, read_by "
+        "FROM mailbox_messages WHERE urgency = 'urgent' AND read_at IS NULL "
+        "ORDER BY sent_at ASC, id ASC"
+    )
+    completed = _run([wrapper, "--", "bd", "sql", "--json", sql], cwd=cwd)
+    if completed.returncode != 0:
+        raise LedgerError(completed.stderr.strip() or "bd sql refused")
+    try:
+        decoded: Any = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise LedgerError(_NON_JSON_REPLY) from error
+    if not isinstance(decoded, list) or not all(isinstance(item, dict) for item in decoded):
+        raise LedgerError(_BAD_RECORDS_REPLY)
+    return decoded
+
+
+def comment_on_coordinator(
+    *, wrapper: str, cwd: Path, epic: str, message: Mapping[str, object], age: int
+) -> None:
+    text = (
+        "URGENT-MAILBOX-ALARM "
+        f"message_id={message['id']} from={message.get('from', '')} to={message.get('to', '')} "
+        f"unread_seconds={age}"
+    )
+    completed = _run([wrapper, "--", "bd", "comment", epic, text], cwd=cwd)
+    if completed.returncode != 0:
+        raise LedgerError(completed.stderr.strip() or "bd comment refused")
+
+
+def _sent_at(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def one_pass(  # noqa: PLR0915 -- each branch is a separate alarm-sink recovery rail.
+    *,
+    now: datetime,
+    dwell: int,
+    alarm_file: Path,
+    state_file: Path,
+    fetch: Callable[[], Sequence[Mapping[str, object]]],
+    comment: Callable[[Mapping[str, object], int], None],
+) -> None:
+    """Alarm due records once; a failed ledger operation is logged and left for the next pass."""
+    try:
+        messages = fetch()
+    except LedgerError as error:
+        log("ledger_poll_failed", error=str(error))
+        return
+    state = _load_state(state_file)
+    for message in messages:
+        message_id = message.get("id")
+        sent_at = _sent_at(message.get("sent_at"))
+        if not isinstance(message_id, str) or not message_id or sent_at is None:
+            log("mailbox_record_invalid", message_id=message_id)
+            continue
+        if message.get("urgency") != "urgent" or message.get("read_at") is not None:
+            continue
+        age = int((now - sent_at).total_seconds())
+        if age < dwell:
+            continue
+        recorded = state.setdefault(message_id, {})
+        if not recorded.get("alarm_file", False):
+            log("urgent_mailbox_alarm", message_id=message_id, age_seconds=age)
+            if _append_alarm(alarm_file, message=message, age=age):
+                recorded["alarm_file"] = True
+                _save_state(state_file, state)
+        if not recorded.get("alarm_file", False) or recorded.get("ledger_comment", False):
+            continue
+        try:
+            comment(message, age)
+        except LedgerError as error:
+            log("ledger_comment_failed", message_id=message_id, error=str(error))
+            continue
+        recorded["ledger_comment"] = True
+        _save_state(state_file, state)
+
+
+def _check(*, condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
+def self_test() -> None:  # noqa: PLR0915 -- compact offline acceptance fixture.
+    """Offline proof for alarm sinks, dwell/urgency filters, dedupe, and retry behaviour."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        alarm_file = root / "alarms.jsonl"
+        state_file = root / "state.json"
+        now = datetime(2026, 11, 22, tzinfo=timezone.utc)
+        overdue = {
+            "id": "urgent-overdue",
+            "from": "coordinator",
+            "to": "stopped-seat",
+            "urgency": "urgent",
+            "sent_at": (now - timedelta(seconds=121)).isoformat(),
+            "read_at": None,
+        }
+        normal = {**overdue, "id": "normal", "urgency": "normal"}
+        fresh = {
+            **overdue,
+            "id": "urgent-fresh",
+            "sent_at": (now - timedelta(seconds=119)).isoformat(),
+        }
+        comments: list[str] = []
+
+        def comment(message: Mapping[str, object], _age: int) -> None:
+            comments.append(str(message["id"]))
+
+        one_pass(
+            now=now,
+            dwell=DWELL_SECONDS,
+            alarm_file=alarm_file,
+            state_file=state_file,
+            fetch=lambda: (overdue, normal, fresh),
+            comment=comment,
+        )
+        _check(condition=comments == ["urgent-overdue"], message="missing initial comment")
+        alarms = [json.loads(line) for line in alarm_file.read_text(encoding="utf-8").splitlines()]
+        _check(
+            condition=[alarm["message_id"] for alarm in alarms] == ["urgent-overdue"],
+            message="normal or within-dwell message was alarmed",
+        )
+        one_pass(
+            now=now + timedelta(seconds=30),
+            dwell=DWELL_SECONDS,
+            alarm_file=alarm_file,
+            state_file=state_file,
+            fetch=lambda: (overdue,),
+            comment=comment,
+        )
+        _check(
+            condition=comments == ["urgent-overdue"],
+            message="a message was alarmed more than once",
+        )
+
+        retry = {**overdue, "id": "urgent-comment-retry"}
+        attempts = 0
+
+        def fail_once(message: Mapping[str, object], _age: int) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise LedgerError(_LEDGER_UNAVAILABLE)
+            comments.append(str(message["id"]))
+
+        one_pass(
+            now=now,
+            dwell=DWELL_SECONDS,
+            alarm_file=alarm_file,
+            state_file=state_file,
+            fetch=lambda: (retry,),
+            comment=fail_once,
+        )
+        one_pass(
+            now=now + timedelta(seconds=1),
+            dwell=DWELL_SECONDS,
+            alarm_file=alarm_file,
+            state_file=state_file,
+            fetch=lambda: (retry,),
+            comment=fail_once,
+        )
+        _check(
+            condition=attempts == _RETRY_ATTEMPTS and comments[-1] == "urgent-comment-retry",
+            message="failed ledger comment was not retried",
+        )
+        one_pass(
+            now=now,
+            dwell=DWELL_SECONDS,
+            alarm_file=alarm_file,
+            state_file=state_file,
+            fetch=lambda: (_ for _ in ()).throw(LedgerError(_LEDGER_UNAVAILABLE)),
+            comment=comment,
+        )
+    print("urgent-mailbox-poller self-test passed")  # noqa: T201 -- user-facing control result.
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--dwell", type=int, default=DWELL_SECONDS)
+    parser.add_argument("--interval", type=int, default=INTERVAL_SECONDS)
+    parser.add_argument(
+        "--ledger-wrapper", default=os.environ.get("URGENT_MAILBOX_LEDGER_WRAPPER", LEDGER_WRAPPER)
+    )
+    parser.add_argument(
+        "--ledger-cwd",
+        type=Path,
+        default=Path(os.environ.get("URGENT_MAILBOX_LEDGER_CWD", str(Path.cwd()))),
+    )
+    parser.add_argument(
+        "--alarm-file",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "URGENT_MAILBOX_ALARM_FILE", "~/.local/state/urgent-mailbox-poller/alarms.jsonl"
+            )
+        ).expanduser(),
+    )
+    parser.add_argument(
+        "--state-file",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "URGENT_MAILBOX_STATE_FILE", "~/.local/state/urgent-mailbox-poller/state.json"
+            )
+        ).expanduser(),
+    )
+    parser.add_argument(
+        "--coordinator-epic",
+        default=os.environ.get("URGENT_MAILBOX_COORDINATOR_EPIC", COORDINATOR_EPIC),
+    )
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return 0
+    if args.dwell < 0 or args.interval <= 0:
+        return 2
+    while True:
+        one_pass(
+            now=datetime.now(timezone.utc),
+            dwell=args.dwell,
+            alarm_file=args.alarm_file,
+            state_file=args.state_file,
+            fetch=lambda: fetch_unread_urgent(wrapper=args.ledger_wrapper, cwd=args.ledger_cwd),
+            comment=lambda message, age: comment_on_coordinator(
+                wrapper=args.ledger_wrapper,
+                cwd=args.ledger_cwd,
+                epic=args.coordinator_epic,
+                message=message,
+                age=age,
+            ),
+        )
+        if args.once:
+            return 0
+        time.sleep(args.interval)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

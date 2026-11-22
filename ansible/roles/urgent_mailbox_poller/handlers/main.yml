@@ -1,0 +1,8 @@
+---
+- name: Restart the urgent mailbox poller
+  ansible.builtin.systemd:
+    name: "{{ urgent_mailbox_poller_unit }}"
+    state: restarted
+    daemon_reload: true
+  become: true
+  when: urgent_mailbox_poller_enabled and not ansible_check_mode

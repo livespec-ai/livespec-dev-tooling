@@ -52,6 +52,10 @@
     # Out-of-band stuck-dialog watchdog (plan remote-control-retirement, fwtuxo).
     - role: seat_dialog_watchdog
       tags: [seat_dialog_watchdog]
+    # Out-of-band urgent mailbox alarm (plan ledger-mailbox-seat-channel, f5upsw).
+    # It only reads the ledger and alarms; it never types into any seat.
+    - role: urgent_mailbox_poller
+      tags: [urgent_mailbox_poller]
     # The git credential helper shim every fleet clone here names in its
     # .git/config (livespec-orslcm Pillar 3). Clones whose committed
     # .livespec.jsonc remaps to the livespec-ai org App mint through their

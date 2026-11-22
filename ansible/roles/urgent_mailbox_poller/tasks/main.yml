@@ -1,0 +1,40 @@
+---
+- name: Stop the urgent mailbox poller when switched off
+  ansible.builtin.systemd:
+    name: "{{ urgent_mailbox_poller_unit }}"
+    state: stopped
+    enabled: false
+  failed_when: false
+  become: true
+  when: not urgent_mailbox_poller_enabled
+
+- name: Install the urgent mailbox poller program
+  ansible.builtin.copy:
+    src: urgent-mailbox-poller
+    dest: "{{ urgent_mailbox_poller_command }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: urgent_mailbox_poller_enabled
+  notify: Restart the urgent mailbox poller
+
+- name: Install the urgent mailbox poller unit
+  ansible.builtin.template:
+    src: urgent-mailbox-poller.service.j2
+    dest: "/etc/systemd/system/{{ urgent_mailbox_poller_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: urgent_mailbox_poller_enabled
+  notify: Restart the urgent mailbox poller
+
+- name: Enable and start the urgent mailbox poller
+  ansible.builtin.systemd:
+    name: "{{ urgent_mailbox_poller_unit }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: urgent_mailbox_poller_enabled and not ansible_check_mode
