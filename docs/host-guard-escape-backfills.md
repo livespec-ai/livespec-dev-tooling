@@ -40,7 +40,7 @@ Measured but not touched (owners listed on the work item):
 
 ## 2026-11-22: incident-merge 5157 start and retention read-back run (livespec-dev-tooling-bqnzcm, -tr5jkd)
 
-- Escape recorded on: `livespec-dev-tooling-6tgd2z` (two comments, 2026-11-22).
+- Escape recorded on: `livespec-dev-tooling-6tgd2z` (three comments, 2026-11-22).
 - Host: the VPS (vmi3006760).
 - Why no committed route: both are one-shot starts of a oneshot systemd unit
   the committed `incident_observer` and `dev_host_retention` roles install but
@@ -57,3 +57,10 @@ Commands run by hand on the VPS under the escape:
 2. `systemctl start livespec-dev-host-retention.service`: the first run after
    the `dev_host_retention` apply from livespec-dev-tooling#5279, read back to
    confirm the uv prune and cap. Result: exit 0, uv cache pruned to 137,632 KiB.
+3. One `POST http://127.0.0.1:8765/bind` to the livespec-dev-tooling observer,
+   with the control bearer read on the host and never printed, and exactly the
+   three keys `repository`, `head_sha` (`d0cf7db823f3761bc0080dc797c848daef83dee8`)
+   and `run_id` (45053854447, the green master `ci.yml` push run): the gtx5nl
+   attempt-1 arm bind, ordered by coordinator ruling R301. Result: HTTP 202,
+   `admitted`, "retained arm bound to its authenticated master run". It is an
+   authenticated control-plane call with no committed apply route.
