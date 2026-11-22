@@ -37,10 +37,11 @@ _ROLE_DEFAULTS = _REPO_ROOT / "ansible" / "roles" / "ci_converge_unit" / "defaul
 # this repository's to choose, the kinds are not. The two cluster-scoped kinds
 # arrived with the nodes read `livespec-dev-tooling-pvykv7` widened the
 # credential by; everything else is `livespec-dev-tooling-f5e6vl`'s original
-# seven.
+# seven, plus the LimitRange of `livespec-dev-tooling-tsde55`.
 _EXPECTED_KINDS = (
     "ClusterRole",
     "ClusterRoleBinding",
+    "LimitRange",
     "Namespace",
     "NetworkPolicy",
     "ResourceQuota",
@@ -231,7 +232,7 @@ def _objects() -> tuple[tuple[str, str, str], ...]:
     return tuple(found)
 
 
-def test_the_factory_manifests_declare_exactly_the_nine_labelled_objects() -> None:
+def test_the_factory_manifests_declare_exactly_the_ten_labelled_objects() -> None:
     assert _FACTORY_DIR.is_dir(), (
         f"{_FACTORY_DIR.relative_to(_REPO_ROOT)} does not exist, so the factory namespace is "
         "whatever somebody last typed at a cluster whose datastore is wiped at every boot"

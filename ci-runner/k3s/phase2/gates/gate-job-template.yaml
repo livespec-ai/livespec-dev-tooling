@@ -919,6 +919,9 @@ spec:
             requests:
               cpu: "@@CPU@@"
               memory: "@@MEMORY@@"
+              # Request only, no limit: a limit would make the kubelet evict
+              # the gate for disk use, which is what this request prevents.
+              ephemeral-storage: "@@EPHEMERAL_STORAGE@@"
             limits:
               # No cpu limit, deliberately: a cpu limit throttles rather than
               # bin-packs, and the quota above is what bounds concurrency. The
