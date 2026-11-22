@@ -17,6 +17,7 @@
 #   archive-snapshot  move a stale (over 24 h) or unreadable before-snapshot aside so a
 #             new window can snapshot; a fresh one is refused unless
 #             -e homelab_worker_window_force_archive=<node> is also given
+#   lift-hold lift the admission hold a rejoined worker registers under (a step after join)
 #   join      join the worker (--api-server and --server-ca come from inventory)
 #   drill     the departure drill on the node
 #   check     the revert TRIGGER: node not Ready within the bound, or a pod no

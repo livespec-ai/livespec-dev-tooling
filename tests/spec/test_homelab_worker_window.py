@@ -151,7 +151,12 @@ def env(tmp_path: Path) -> _Env:
     _exe(path=bin_dir / "kubectl", body=_STUB_KUBECTL)
     scripts = tmp_path / "scripts"
     scripts.mkdir()
-    for name in ("remove-worker.sh", "join-worker.sh", "departure-drill.sh"):
+    for name in (
+        "remove-worker.sh",
+        "join-worker.sh",
+        "departure-drill.sh",
+        "lift-admission-hold.sh",
+    ):
         _exe(path=scripts / name, body=_STUB_SCRIPT)
     return _Env(state=state, bin_dir=bin_dir, scripts=scripts)
 
@@ -224,7 +229,8 @@ def _snapshot_then_change_queue(env: _Env) -> None:
 
 
 @pytest.mark.parametrize(
-    "action", ["snapshot", "archive-snapshot", "join", "drill", "remove", "check", "revert"]
+    "action",
+    ["snapshot", "archive-snapshot", "join", "lift-hold", "drill", "remove", "check", "revert"],
 )
 def test_every_action_refuses_a_node_confirm_that_is_not_the_workers_name(
     env: _Env, action: str
@@ -250,6 +256,13 @@ def test_drill_and_remove_are_fenced_to_the_node_by_name(env: _Env) -> None:
         f"departure-drill.sh {_HOST} --confirm-depart {_NODE}",
         f"remove-worker.sh {_HOST}",
     ]
+
+
+def test_lift_hold_runs_the_lift_script_for_the_host_and_touches_no_snapshot(env: _Env) -> None:
+    result = _run(env=env, action="lift-hold")
+    assert result.returncode == 0
+    assert _calls(env) == [f"lift-admission-hold.sh {_HOST}"]
+    assert not (env.state / "gates-cq-before.json").exists()
 
 
 def test_snapshot_strips_server_metadata_records_its_time_and_is_never_overwritten(
