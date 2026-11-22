@@ -153,6 +153,15 @@ _UV_STUB = """#!/usr/bin/env bash
 set -uo pipefail
 printf '%s\\n' "$*" >>"$STUB_UV_LOG"
 printf 'uv %s\\n' "$*" >>"$STUB_EVENT_LOG"
+# Armed with STUB_UV_FAIL_UNTIL_CHOWNED=<unit dir> it reproduces the 2026-11-21
+# VPS failure: the prune aborts on a foreign-owned path under that unit until the
+# unit has been handed back with a RECURSIVE chown.
+if [[ -n ${STUB_UV_FAIL_UNTIL_CHOWNED:-} ]] \\
+    && ! grep -q -- "-R .*$STUB_UV_FAIL_UNTIL_CHOWNED" "$STUB_CHOWN_LOG"; then
+    printf 'error: Failed to clear cache\\n' >&2
+    printf '  Caused by: failed to remove file `%s`: Permission denied (os error 13)\\n' "$STUB_UV_BLOCKED_PATH" >&2
+    exit 2
+fi
 if [[ ${STUB_UV_PRUNE_FAILS:-0} == 1 ]]; then
     printf 'error: Failed to clear cache\\n' >&2
     printf '  Caused by: failed to remove directory `%s`\\n' "$STUB_UV_BLOCKED_PATH" >&2
@@ -1183,3 +1192,122 @@ def test_the_role_retires_both_hourly_crons_and_keeps_the_weekly_timer() -> None
     keep = tasks.split("- name: Keep the weekly fstrim timer enabled and started", maxsplit=1)
     assert len(keep) == 2, f"the role must keep the weekly fstrim timer armed:\n{tasks}"
     assert "enabled: true" in keep[1] and "state: started" in keep[1], keep[1]
+
+
+def test_a_prune_that_stops_on_a_foreign_owned_path_is_repaired_and_retried_unforced(
+    *, tmp_path: Path
+) -> None:
+    """The 2026-11-21 VPS failure: a root-owned .pyc the cut-off walk never reached.
+
+    The prune must hand the path's archive back to the cache owner, prune again
+    and finish, and it must never be forced.
+    """
+    env = _nobody_env(tmp_path=tmp_path)
+    unit = tmp_path / "uv-cache" / "archive-v0" / "T4PlYmU"
+    pyc = unit / "lib" / "__pycache__" / "verification.cpython-314.pyc"
+    pyc.parent.mkdir(parents=True)
+    pyc.touch()
+    env |= {"STUB_UV_FAIL_UNTIL_CHOWNED": str(unit), "STUB_UV_BLOCKED_PATH": str(pyc)}
+
+    done = _retain(env=env)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "uv cache prune: Removed 4096 files" in done.stdout, done.stdout
+    assert "handing" in done.stdout and str(unit) in done.stdout, done.stdout
+    assert "did not complete" not in done.stdout, done.stdout
+    chown_log = (tmp_path / "chown.log").read_text(encoding="utf-8")
+    assert f"-R -h 65534:65534 {unit}" in chown_log, chown_log
+    prunes = (tmp_path / "uv.log").read_text(encoding="utf-8").splitlines()
+    assert len(prunes) == 2, prunes
+    assert not any("--force" in line for line in prunes), prunes
+
+
+def _fill_uv_cache(*, tmp_path: Path, kib: int) -> Path:
+    cache = tmp_path / "uv-cache"
+    blob = cache / "archive-v0" / "blob"
+    blob.parent.mkdir(parents=True, exist_ok=True)
+    _ = blob.write_bytes(b"x" * 1024 * kib)
+    return blob
+
+
+def test_a_uv_cache_over_its_size_cap_is_emptied_and_the_sizes_are_logged(
+    *, tmp_path: Path
+) -> None:
+    """Over the cap after the prune, with no uv process holding it, the contents go."""
+    env = _base_env(tmp_path=tmp_path) | {"LIVESPEC_DEV_HOST_UV_CACHE_MAX_GB": "0.001"}
+    blob = _fill_uv_cache(tmp_path=tmp_path, kib=2048)
+
+    done = _retain(env=env)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not blob.exists(), done.stdout
+    assert "uv cache cap enforced:" in done.stdout and "KiB before" in done.stdout, done.stdout
+    assert "KiB after" in done.stdout, done.stdout
+
+
+def test_a_uv_cache_under_its_size_cap_is_left_in_place(*, tmp_path: Path) -> None:
+    env = _base_env(tmp_path=tmp_path) | {"LIVESPEC_DEV_HOST_UV_CACHE_MAX_GB": "0.001"}
+    blob = _fill_uv_cache(tmp_path=tmp_path, kib=16)
+
+    done = _retain(env=env)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert blob.exists(), done.stdout
+    assert "at or under its 0.001 GB cap" in done.stdout, done.stdout
+
+
+def test_an_over_cap_uv_cache_that_another_uv_process_holds_is_left_alone(
+    *, tmp_path: Path, uv_in_use: subprocess.Popen[bytes]
+) -> None:
+    env = _base_env(tmp_path=tmp_path) | {"LIVESPEC_DEV_HOST_UV_CACHE_MAX_GB": "0.001"}
+    blob = _fill_uv_cache(tmp_path=tmp_path, kib=2048)
+    assert uv_in_use.poll() is None
+
+    done = _retain(env=env)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert blob.exists(), done.stdout
+    assert "in use by another uv process; left for a later run" in done.stdout, done.stdout
+
+
+def test_the_retention_role_passes_the_uv_cache_cap_and_the_alert_owner_and_runbook() -> None:
+    defaults = _read(path=_DEFAULTS)
+    for variable in (
+        "dev_host_retention_uv_cache_max_gb",
+        "dev_host_retention_alert_owner",
+        "dev_host_retention_alert_runbook",
+        "dev_host_retention_alert_ledger_epic",
+    ):
+        assert re.search(rf"^{variable}: \S", defaults, re.MULTILINE), variable
+    service = _read(path=_SERVICE_TEMPLATE)
+    assert (
+        'Environment="LIVESPEC_DEV_HOST_UV_CACHE_MAX_GB={{ dev_host_retention_uv_cache_max_gb }}"'
+        in service
+    ), service
+    capacity = _read(path=_ROLE / "templates" / "livespec-dev-host-capacity-check.service.j2")
+    for env_name in ("ALERT_OWNER", "ALERT_RUNBOOK", "ALERT_LEDGER_EPIC", "ALERT_LEDGER_DIR"):
+        assert f"LIVESPEC_DEV_HOST_{env_name}=" in capacity, capacity
+    doc = _read(path=_ROLE_DOC)
+    assert "## Disk full: first steps" in doc
+    for topic in (
+        "uv cache",
+        "~/.worktrees",
+        "/var/tmp/livespec-dumps",
+        "journalctl --vacuum-size",
+        "escape procedure",
+    ):
+        assert topic in doc, topic
+
+
+def test_hetzner_xubuntu_gets_the_retention_from_the_committed_group_and_play() -> None:
+    inventory = yaml.safe_load(_LEGACY_INVENTORY.read_text(encoding="utf-8"))
+    group = inventory["all"]["children"]["dev_host_retention_hosts"]["children"]
+    assert set(group) == {"dev_hosts", "fabro_dispatch_clients"}, group
+    assert "hetzner-xubuntu" in inventory["all"]["children"]["fabro_dispatch_clients"]["hosts"]
+    host_vars = yaml.safe_load(
+        (_ANSIBLE / "inventory" / "host_vars" / "hetzner-xubuntu.yml").read_text(encoding="utf-8")
+    )
+    assert host_vars["dev_host_retention_user"] == "ubuntu"
+    play = yaml.safe_load((_ANSIBLE / "dev-host-retention.yml").read_text(encoding="utf-8"))[0]
+    assert play["hosts"] == "dev_host_retention_hosts"
+    assert {"role": "dev_host_retention", "tags": ["dev_host_retention"]} in play["roles"]

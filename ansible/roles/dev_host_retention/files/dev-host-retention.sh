@@ -49,7 +49,14 @@ BULK_DUMP_DIR=${LIVESPEC_DEV_HOST_BULK_DUMP_DIR:-/var/tmp/livespec-dumps}
 BULK_DUMP_CAP_BYTES=${LIVESPEC_DEV_HOST_BULK_DUMP_CAP_BYTES:-21474836480}
 RETENTION_USER=${LIVESPEC_DEV_HOST_RETENTION_USER:-root}
 UV_BIN=${LIVESPEC_DEV_HOST_RETENTION_UV_BIN:-uv}
-UV_OWNERSHIP_BUDGET_SECONDS=${LIVESPEC_DEV_HOST_UV_OWNERSHIP_BUDGET_SECONDS:-300}
+# 900s, not 300s: on 2026-11-21 the VPS's 45G, ~200k-file cache outran 300s every
+# night, the walk was cut off before it reached a root-owned .pyc, and the prune
+# then aborted on it. The prune-failure repair below is what makes a cut-off
+# walk safe; the budget only bounds how much of the walk completes.
+UV_OWNERSHIP_BUDGET_SECONDS=${LIVESPEC_DEV_HOST_UV_OWNERSHIP_BUDGET_SECONDS:-900}
+# The size cap on the uv cache, in GB (decimals allowed), enforced after the prune.
+UV_CACHE_MAX_GB=${LIVESPEC_DEV_HOST_UV_CACHE_MAX_GB:-10}
+UV_HEALED_UNITS=" "
 RETENTION_STATE_DIR=${LIVESPEC_DEV_HOST_RETENTION_STATE_DIR:-/var/lib/livespec-dev-host-retention}
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 
@@ -188,6 +195,40 @@ uv_cache_prune_skipped() {
     log "uv cache prune skipped: $1; the prune is never forced, so a cache another uv process is using is left for a later run"
 }
 
+# The unit of the cache a failing path belongs to: the first two components
+# below the cache root (`archive-v0/<id>`), or the first when the path is that
+# shallow.
+uv_cache_unit_of() {
+    local cache_dir=$1 path=$2 rel first rest
+    [[ $path == "$cache_dir"/* ]] || return 1
+    rel=${path#"$cache_dir"/}
+    first=${rel%%/*}
+    rest=${rel#*/}
+    if [[ $rel == */* ]]; then
+        printf '%s/%s\n' "$first" "${rest%%/*}"
+    else
+        printf '%s\n' "$first"
+    fi
+}
+
+# Recursively hands back to the cache owner every unit a failed prune named.
+# Returns 0 only when it handed back a unit it had not handed back before, so
+# the caller retries only when the retry can differ.
+heal_foreign_paths_from_failure() {
+    local cache_dir=$1 owner_uid=$2 owner_gid=$3 output=$4 path unit progressed=1
+    while IFS= read -r path; do
+        [[ -n $path ]] || continue
+        unit=$(uv_cache_unit_of "$cache_dir" "$path") || continue
+        [[ -n $unit && $unit != .. && $unit != . ]] || continue
+        [[ $UV_HEALED_UNITS != *" $unit "* ]] || continue
+        UV_HEALED_UNITS+="$unit "
+        log "uv cache prune stopped on $path; handing $cache_dir/$unit back to $owner_uid:$owner_gid and pruning again"
+        chown -R -h "$owner_uid:$owner_gid" "$cache_dir/$unit" 2>/dev/null
+        progressed=0
+    done < <(unremovable_paths "$output")
+    return "$progressed"
+}
+
 prune_uv_cache() {
     local output path cache_home cache_dir owner_uid owner_gid
     if [[ $UV_BIN == */* && ! -x $UV_BIN ]]; then
@@ -211,20 +252,79 @@ prune_uv_cache() {
             return 0
         fi
     fi
-    output=$(run_uv_cache_prune "$cache_home")
-    if [[ $? -eq 0 ]]; then
-        log "uv cache prune: ${output//$'\n'/; }"
-        return 0
-    fi
-    if uv_lock_timeout "$output"; then
-        uv_cache_prune_skipped "uv timed out waiting for the cache lock another uv process holds"
-        return 0
-    fi
+    local status round=0
+    while :; do
+        output=$(run_uv_cache_prune "$cache_home")
+        status=$?
+        if [[ $status -eq 0 ]]; then
+            log "uv cache prune: ${output//$'\n'/; }"
+            return 0
+        fi
+        if uv_lock_timeout "$output"; then
+            uv_cache_prune_skipped "uv timed out waiting for the cache lock another uv process holds"
+            return 0
+        fi
+        # The prune stopped on a path the retention user cannot remove: a
+        # foreign-owned path the (budgeted) ownership walk had not reached.
+        # Hand that path's whole archive back to the cache owner and prune
+        # again, never forced. A unit already handed back is not tried twice,
+        # so a failure ownership does not explain ends the loop.
+        round=$((round + 1))
+        if [[ $round -gt 25 || -z ${owner_uid:-} || -z ${owner_gid:-} ]]; then
+            break
+        fi
+        if ! heal_foreign_paths_from_failure "$cache_dir" "$owner_uid" "$owner_gid" "$output"; then
+            break
+        fi
+    done
     log "WARNING: the uv cache prune did not complete: ${output//$'\n'/; }"
     while IFS= read -r path; do
         [[ -n $path ]] || continue
         log "uv cache prune could not remove $path; continuing with the remaining steps"
     done < <(unremovable_paths "$output")
+}
+
+resolve_uv_cache_dir() {
+    local cache_home
+    cache_home=$(getent passwd "$RETENTION_USER" 2>/dev/null | cut -d: -f6)
+    printf '%s\n' "${LIVESPEC_DEV_HOST_UV_CACHE_DIR:-${cache_home:+$cache_home/.cache/uv}}"
+}
+
+# Bounds the uv cache by UV_CACHE_MAX_GB. The prune only removes what uv deems
+# unreferenced, so a cache can still sit far over any budget (45G measured on
+# 2026-11-21). A cache under the cap is left in place. A cache over it is
+# emptied (everything but the lock file) as root, and only when no uv process
+# holds it: the same flock the prune respects. uv rebuilds what it needs.
+enforce_uv_cache_cap() {
+    local cache_dir cap_kib before_kib after_kib
+    cache_dir=$(resolve_uv_cache_dir)
+    if [[ -z $cache_dir || $cache_dir == / || ! -d $cache_dir ]]; then
+        return 0
+    fi
+    cap_kib=$(awk -v g="$UV_CACHE_MAX_GB" 'BEGIN { printf "%d", g * 1048576 }' 2>/dev/null)
+    if [[ -z $cap_kib || $cap_kib -le 0 ]]; then
+        log "uv cache size cap is not set ($UV_CACHE_MAX_GB GB); no cap enforced"
+        return 0
+    fi
+    before_kib=$(du -sk -x "$cache_dir" 2>/dev/null | awk '{print $1}')
+    if [[ -z $before_kib ]]; then
+        log "WARNING: could not measure the uv cache $cache_dir; no cap enforced"
+        return 0
+    fi
+    if [[ $before_kib -le $cap_kib ]]; then
+        log "uv cache $cache_dir is ${before_kib} KiB, at or under its ${UV_CACHE_MAX_GB} GB cap; left in place"
+        return 0
+    fi
+    if uv_cache_is_in_use "$cache_dir"; then
+        log "uv cache $cache_dir is ${before_kib} KiB, over its ${UV_CACHE_MAX_GB} GB cap, but is in use by another uv process; left for a later run"
+        return 0
+    fi
+    log "uv cache $cache_dir is ${before_kib} KiB, over its ${UV_CACHE_MAX_GB} GB cap; removing its contents"
+    if ! find "$cache_dir" -mindepth 1 -maxdepth 1 ! -name .lock -exec rm -rf -- {} + 2>/dev/null; then
+        log "WARNING: some uv cache paths could not be removed"
+    fi
+    after_kib=$(du -sk -x "$cache_dir" 2>/dev/null | awk '{print $1}')
+    log "uv cache cap enforced: ${before_kib} KiB before, ${after_kib:-unknown} KiB after, cap ${UV_CACHE_MAX_GB} GB"
 }
 
 # The scratch and bulk legs are separate because their liveness and ordering
@@ -317,6 +417,7 @@ report_free_space before "$FILESYSTEM"
 report_free_space before /tmp
 prune_docker_images
 prune_uv_cache
+enforce_uv_cache_cap
 sweep_checkout_roots
 if declare -F reclaim_scratch_and_bulk >/dev/null; then
     reclaim_scratch_and_bulk "$TMP_ROOT" "$SCRATCH_RETENTION_SECONDS" "$BULK_DUMP_DIR" "$BULK_DUMP_CAP_BYTES"

@@ -80,6 +80,12 @@ with no installed runner is SKIPPED and says so.
 | `dev_host_retention_bulk_dump_cap_bytes` | `21474836480` | 20 G (20 GiB) bulk-dump cap; the oldest files go first |
 | `dev_host_retention_retired_hourly_crons` | `[/etc/cron.hourly/fstrim, /etc/cron.hourly/free]` | the hand-installed hourly crons the role keeps ABSENT; see "Retired hourly crons" below |
 | `dev_host_retention_fstrim_timer` | `fstrim.timer` | the weekly systemd trim timer the role keeps enabled and started |
+| `dev_host_retention_uv_cache_max_gb` | `10` | size cap on the uv cache in GB, enforced after the prune: a cache over it that no uv process holds is emptied, a cache under it is left in place |
+| `dev_host_retention_alert_owner` | `vps-control-node-ops seat (escalate to legacy-coordinator-agent)` | named in every capacity alert |
+| `dev_host_retention_alert_runbook` | this file, "Disk full: first steps" | named in every capacity alert |
+| `dev_host_retention_alert_ledger_epic` | `livespec-dev-tooling-6tgd2z` | the coordinator epic each alert is also commented on, so a seat reads it within a tick; empty disables the ledger record |
+| `dev_host_retention_alert_ledger_dir` | `/home/ubuntu/workspace/livespec-dev-tooling` | the ledger checkout the root unit runs `bd` from |
+| `dev_host_retention_alert_ledger_wrapper` | `/usr/local/bin/with-livespec-env.sh` | the credential wrapper; if it or the checkout is unreachable the check logs a WARNING and alerts by ntfy only |
 | `dev_host_retention_capacity_repeat_interval_seconds` | `3600` | one-hour minimum interval between repeated capacity notifications per filesystem |
 | `dev_host_retention_user` | `root` | the login the retention runs as; see below, it is the one value the dev host must set |
 | `dev_host_retention_uv_bin` | `/usr/bin/uv` | absolute path to the uv executable the retention invokes while pruning that user's cache |
@@ -202,3 +208,36 @@ bound — when `gate-run.sh` reaps its own store, and when the sandbox image
 lifecycle leaves no dangling layers behind. Until then the dev host has no
 other standing reclamation: the `disk_guard` role is `hp-xubuntu`'s low-water
 backstop and is not included by `ansible/dev-host.yml`.
+
+## Disk full: first steps
+
+Read this when a "Dev host capacity alert" arrives (ntfy, or the comment on
+`livespec-dev-tooling-6tgd2z`). The VPS filled on 2026-11-22 after 65 alerts that
+nobody owned; the owner named in the alert acts on it within one coordinator
+tick. Measure first (`df -P /`, `du -xsh <path>`), then reclaim, largest first:
+
+1. **uv cache** (`~/.cache/uv`, 45G on the VPS). The daily retention prunes it
+   and caps it at `dev_host_retention_uv_cache_max_gb`. To act now:
+   `systemctl start livespec-dev-host-retention.service` and read its journal.
+   A hand `uv cache prune` aborts on root-owned paths; the unit hands them back
+   to the cache owner and retries. Never `--force`: a running `uvx` loses its
+   environment.
+2. **`~/.worktrees`** (80G in 559 directories on the VPS). Remove merged,
+   detached worktrees with `git worktree remove` (never `rm -rf` a worktree
+   with unmerged work).
+3. **`/var/tmp/livespec-dumps`**: the bulk-dump leg caps it at
+   `dev_host_retention_bulk_dump_cap_bytes`; aged directories beyond that are
+   safe to remove.
+4. **Journal**: `journalctl --disk-usage`, then `journalctl --vacuum-size=500M`.
+5. Other measured consumers on the VPS: `/var/lib/doltdb/backup-verification`
+   (failed `dolt-backup-oversized-verify`), `/srv/arq-vps-root-snapshot`
+   (failed `arq-vps-root-snapshot.service`), `~/.claude/projects`. These belong
+   to their owners; file or comment rather than delete.
+
+**The escape procedure.** On a fleet host the host guard refuses these
+commands from a seat. When the disk is at or near 100 percent and the ledger is
+failing, use the audited HOST-GUARD-ESCAPE: record the escape id and the exact
+commands on `livespec-dev-tooling-6tgd2z` before running them, and backfill a
+committed record afterwards (see `docs/host-guard-escape-backfills.md`).
+Prefer the committed route above; the escape is for a host that is already
+down.

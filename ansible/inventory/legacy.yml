@@ -65,6 +65,14 @@ all:
         # tailscale-admin record.
         hetzner-xubuntu:
           ansible_user: ubuntu
+    # Every host that gets the dev host disk retention and capacity check from
+    # ansible/dev-host-retention.yml (livespec-dev-tooling-tr5jkd): the groups
+    # whose hosts run uv. Membership is by child group, so a host joining either
+    # one is covered with no further edit.
+    dev_host_retention_hosts:
+      children:
+        dev_hosts:
+        fabro_dispatch_clients:
     # The maintainer's Macs that run interactive Claude Code sessions
     # (livespec-dev-tooling-i76rv2). The one non-Ubuntu group in this tree, and
     # converged ONLY for claude_memory_write_guard by

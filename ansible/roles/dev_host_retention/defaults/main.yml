@@ -41,6 +41,18 @@ dev_host_retention_tmp_threshold_percent: 75
 dev_host_retention_bulk_dump_dir: /var/tmp/livespec-dumps
 dev_host_retention_bulk_dump_cap_bytes: 21474836480
 dev_host_retention_capacity_repeat_interval_seconds: 3600
+# The uv cache size cap, in GB (decimals allowed). After the prune, a cache over
+# this that no uv process holds is emptied; a cache under it is left in place.
+dev_host_retention_uv_cache_max_gb: 10
+# A capacity alert names who acts on it and where the first steps are written,
+# and is also recorded as a comment on the coordinator epic so a seat reads it
+# within a tick. The ledger record needs the credential wrapper and a ledger
+# checkout; where either is missing the check degrades to the push alone.
+dev_host_retention_alert_owner: "vps-control-node-ops seat (escalate to legacy-coordinator-agent)"
+dev_host_retention_alert_runbook: "livespec-dev-tooling ansible/roles/dev_host_retention/HOST_VARS.md, section 'Disk full: first steps'"
+dev_host_retention_alert_ledger_epic: livespec-dev-tooling-6tgd2z
+dev_host_retention_alert_ledger_dir: /home/ubuntu/workspace/livespec-dev-tooling
+dev_host_retention_alert_ledger_wrapper: /usr/local/bin/with-livespec-env.sh
 dev_host_retention_capacity_check_bin: /usr/local/sbin/livespec-dev-host-capacity-check
 dev_host_retention_capacity_check_service: livespec-dev-host-capacity-check.service
 dev_host_retention_capacity_check_timer: livespec-dev-host-capacity-check.timer

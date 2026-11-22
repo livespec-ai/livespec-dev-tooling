@@ -27,6 +27,7 @@ TimeoutStartSec={{ dev_host_retention_timeout_start_sec }}
 Environment="LIVESPEC_DEV_HOST_RETENTION_DAYS={{ dev_host_retention_gate_run_days }}"
 Environment="LIVESPEC_DEV_HOST_RETENTION_CHECKOUT_ROOTS={{ dev_host_retention_checkout_roots | join(' ') }}"
 Environment="LIVESPEC_DEV_HOST_RETENTION_FILESYSTEM={{ dev_host_retention_filesystem }}"
+Environment="LIVESPEC_DEV_HOST_UV_CACHE_MAX_GB={{ dev_host_retention_uv_cache_max_gb }}"
 Environment="LIVESPEC_DEV_HOST_RETENTION_USER={{ dev_host_retention_user }}"
 Environment="LIVESPEC_DEV_HOST_SCRATCH_RETENTION_SECONDS={{ dev_host_retention_scratch_retention_hours | int * 3600 }}"
 Environment="LIVESPEC_DEV_HOST_BULK_DUMP_DIR={{ dev_host_retention_bulk_dump_dir }}"
