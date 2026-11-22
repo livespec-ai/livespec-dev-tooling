@@ -277,7 +277,7 @@ _FLEET_GATES_CQ = {
     "spec": {
         "resourceGroups": [
             {
-                "coveredResources": ["cpu", "memory"],
+                "coveredResources": ["cpu", "memory", "ephemeral-storage"],
                 "flavors": [
                     {"name": "gates-hp-flavor", "resources": []},
                     {"name": "gates-worker-arm64-flavor", "resources": []},
@@ -357,6 +357,7 @@ def test_the_worker_gate_quota_is_whole_gates_of_the_enrolled_shares(
             "resources": [
                 {"name": "cpu", "nominalQuota": gates * 5},
                 {"name": "memory", "nominalQuota": f"{gates * 8}Gi"},
+                {"name": "ephemeral-storage", "nominalQuota": f"{gates * 2560}Mi"},
             ],
         }
     ]
@@ -391,6 +392,7 @@ def test_the_worker_gate_quota_counts_gates_in_the_unit_gates_cq_declares(
     assert worker["resources"] == [
         {"name": "cpu", "nominalQuota": gates * int(unit_cpu)},
         {"name": "memory", "nominalQuota": f"{gates * int(unit_memory[:-2])}Gi"},
+        {"name": "ephemeral-storage", "nominalQuota": f"{gates * 2560}Mi"},
     ]
 
 
@@ -452,6 +454,7 @@ def test_a_live_gates_cq_not_yet_annotated_takes_the_unit_from_the_committed_fil
     assert _worker_quota(stdout=result.stdout) == [
         {"name": "cpu", "nominalQuota": 12},
         {"name": "memory", "nominalQuota": "18Gi"},
+        {"name": "ephemeral-storage", "nominalQuota": "7680Mi"},
     ]
 
 
@@ -516,6 +519,7 @@ def test_a_not_ready_worker_offers_no_gate_flavor_until_it_returns_ready(tmp_pat
     assert zero_quota["resources"] == [
         {"name": "cpu", "nominalQuota": 0},
         {"name": "memory", "nominalQuota": "0Gi"},
+        {"name": "ephemeral-storage", "nominalQuota": "0Mi"},
     ]
 
     returned_path = tmp_path / "returned"

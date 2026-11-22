@@ -118,6 +118,12 @@ print(cpu, memory[:-2])')"; then
   exit 1
 fi
 read -r gate_cpu gate_memory_gi <<<"$unit"
+# gates-cq covers ephemeral-storage beside cpu and memory (cluster-queue-gates.yaml),
+# and Kueue refuses a ClusterQueue whose flavors do not all list every covered
+# resource, so each worker flavor carries it too: its gate count times the gate
+# Job's per-gate request. This is the renderer's default `ephemeral_storage`
+# (EPHEMERAL-STORAGE.md), not a second source of truth for it.
+gate_ephemeral_mi=2560
 gate_millicores=$((gate_cpu * 1000))
 gates="$(printf '%s\n' "$workers" | awk -F '\t' -v g="$gate_millicores" '
   $3 != "" {
@@ -138,12 +144,13 @@ while read -r arch count; do
     printf '%s\n' "$rendered" | kubectl apply -f - >/dev/null
   fi
   flavors_json="$(printf '%s' "$flavors_json" | ARCH="$arch" CPU="$((count * gate_millicores / 1000))" \
-    MEM="$((count * gate_memory_gi))Gi" python3 -c '
+    MEM="$((count * gate_memory_gi))Gi" EPH="$((count * gate_ephemeral_mi))Mi" python3 -c '
 import json, os, sys
 f = json.load(sys.stdin)
 f.append({"name": "gates-worker-taint-%s-flavor" % os.environ["ARCH"], "resources": [
     {"name": "cpu", "nominalQuota": int(os.environ["CPU"])},
-    {"name": "memory", "nominalQuota": os.environ["MEM"]}]})
+    {"name": "memory", "nominalQuota": os.environ["MEM"]},
+    {"name": "ephemeral-storage", "nominalQuota": os.environ["EPH"]}]})
 print(json.dumps(f))')"
 done <<<"$gates"
 

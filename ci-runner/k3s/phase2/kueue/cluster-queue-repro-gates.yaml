@@ -112,7 +112,21 @@ spec:
       policy: Never
     withinClusterQueue: Never
   resourceGroups:
-    - coveredResources: ["cpu", "memory"]
+    - coveredResources: ["cpu", "memory", "ephemeral-storage"]
+      # EPHEMERAL-STORAGE IS COVERED (2026-11-22, plan gate-job-resources, tsde55
+      # ordering fix). A Workload that requests a resource no resource group
+      # covers is NEVER admitted ("resource ephemeral-storage unavailable in
+      # ClusterQueue"), and a repro Job is the same gate Job, so on 2026-11-21 one gate Job
+      # that requested ephemeral-storage held every later gate in the fleet Pending
+      # for about 20 minutes. ORDER: this manifest is applied through the committed
+      # converge BEFORE any gate client requests ephemeral-storage. Each flavor's
+      # ephemeral-storage quota is its concurrent repro gate count x the 2560Mi gate
+      # request (peak 1.62 GiB measured 2026-11-21 x 1.25, rounded up to 0.5 GiB;
+      # ci-runner/k3s/phase2/EPHEMERAL-STORAGE.md on tsde55). Allocatable read
+      # 2026-11-22: gmktec-xubuntu 434.4 GiB, hp-xubuntu 411.5 GiB, poweredge-xubuntu
+      # 186.0 GiB, gamingpc-xubuntu unreadable (NotReady), so no quota exceeds a
+      # node's disk. The pre-submit check in the gate client now refuses a Job whose
+      # requests this list does not cover.
       flavors:
         - name: gates-repro-gamingpc-flavor
           resources:
@@ -134,6 +148,8 @@ spec:
             - name: "cpu"
               nominalQuota: 0
             - name: "memory"
+              nominalQuota: 0Gi
+            - name: "ephemeral-storage"
               nominalQuota: 0Gi
         - name: gates-repro-poweredge-flavor
           resources:
@@ -158,6 +174,8 @@ spec:
               nominalQuota: 10
             - name: "memory"
               nominalQuota: 8Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 5Gi
         - name: gates-repro-gmktec-flavor
           resources:
             # ARMED: ONE gate unit (5 cpu / 8Gi, gates-cq's gate-unit
@@ -193,6 +211,8 @@ spec:
               nominalQuota: 5
             - name: "memory"
               nominalQuota: 8Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 2560Mi
         - name: gates-repro-hp-flavor
           resources:
             # ZERO since 2026-11-19 (plan gate-job-resources, livespec-dev-tooling-
@@ -210,6 +230,8 @@ spec:
             - name: "cpu"
               nominalQuota: 0
             - name: "memory"
+              nominalQuota: 0Gi
+            - name: "ephemeral-storage"
               nominalQuota: 0Gi
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
