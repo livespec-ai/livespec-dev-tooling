@@ -56,13 +56,15 @@ def _memory_term(*, records: list[str], flag: str) -> str:
         terms = dict(term.split("=", maxsplit=1) for term in matching[0].split(","))
         assert "memory" in terms, f"{flag} must reserve memory; terms={terms!r}"
         quantity = terms["memory"]
-    assert _MEMORY_QUANTITY.fullmatch(quantity), (
-        f"{flag} memory must be a positive binary quantity, not {quantity!r}"
-    )
+    assert _MEMORY_QUANTITY.fullmatch(
+        quantity
+    ), f"{flag} memory must be a positive binary quantity, not {quantity!r}"
     return quantity
 
 
-def test_runner_pool_profiles_render_memory_eviction_and_reservations_from_measured_sizing() -> None:
+def test_runner_pool_profiles_render_memory_eviction_and_reservations_from_measured_sizing() -> (
+    None
+):
     """gmktec and poweredge reserve memory and evict before node-wide OOM pressure."""
     for node in _TARGET_NODES:
         profile = _PROFILES / f"{node}.env"
@@ -76,16 +78,18 @@ def test_runner_pool_profiles_render_memory_eviction_and_reservations_from_measu
             for record in records
             if record.startswith("eviction-soft-grace-period=")
         ]
-        assert len(grace) == 1 and "memory.available=" in grace[0], (
-            f"{node} must give memory.available soft eviction a grace period; records={records!r}"
-        )
+        assert (
+            len(grace) == 1 and "memory.available=" in grace[0]
+        ), f"{node} must give memory.available soft eviction a grace period; records={records!r}"
         _memory_term(records=records, flag="kube-reserved")
         _memory_term(records=records, flag="system-reserved")
         assert re.search(r"measured.*peak.*working set", profile_text, re.IGNORECASE | re.DOTALL), (
             f"{profile.relative_to(_REPO_ROOT)} must record the measured peak factory-pod "
             "working set used to size its reservations and eviction thresholds"
         )
-        assert re.search(r"measured.*(?:node memory|memory capacity)", profile_text, re.IGNORECASE | re.DOTALL), (
+        assert re.search(
+            r"measured.*(?:node memory|memory capacity)", profile_text, re.IGNORECASE | re.DOTALL
+        ), (
             f"{profile.relative_to(_REPO_ROOT)} must record the measured node-memory figure used "
             "to size its reservations and eviction thresholds"
         )
