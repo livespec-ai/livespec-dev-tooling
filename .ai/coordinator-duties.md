@@ -496,6 +496,19 @@ central-credential-service rotates (for example `--keep CLAUDE_CODE_OAUTH_TOKEN_
 account (coordinator's reading). Maintainer [6tgd2z ~2026-11-15T05:3xZ]: "Yes, I authorize whatever you fucking need to
 do to keep the plans moving, as I already had. You don't need to keep asking me."
 
+**Rule CREDENTIAL-CALLS-ARE-THE-COORDINATOR'S: credential, route and test-method questions are decided by the
+coordinator and routed to the owning seat; only physical acts no agent can do stay on the maintainer list.** A
+guaranteed-legitimate forwarded usage-limit refusal from any listed host (authenticated as that host's own observation
+and verified as a real refusal of the active account) holds the active account fleet-wide. A test that needs a login
+runs isolated (a container or separate caam state with a copied credential injected; typing /login into a separate pane
+is authorized), never by asking the maintainer. Maintainer [6tgd2z 2026-11-22T12:53:46Z]: "Some of those questions, for
+me, I think you can resolve yourself. For example, the credentials one: do whatever makes sense. If we are guaranteed
+that a remote quote of fail is legitimate, then yes, definitely flip it everywhere because that may be the first one to
+find it". Maintainer [6tgd2z 2026-11-22T13:03:30Z]: "Yes go ahead and do that test. You have seven accounts to work
+with. Do whatever you need to do and you are authorized to type things into panes so you can type login into a separate
+pane. Don't deadlock yourself. Test this in a container or something with different account credentials injected. You
+can copy credentials around too. There's no reason you can't test all this yourself autonomously. Stop blocking on me."
+
 **Rule OVERRIDE-THEN-BACKFILL: a committed-route ordering never deadlocks a plan.** When one would (merge-before-apply,
 CI waits, or a guard refusing a route only on its path), the coordinator makes the change now and backfills the GitOps
 record the same day: the PR merges, a drift from master reads no change, and an audit record goes on the plan epic. An
