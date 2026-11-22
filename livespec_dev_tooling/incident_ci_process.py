@@ -57,7 +57,6 @@ class CiProcess:
         environment = dict(os.environ)
         if environment.get("GITHUB_EVENT_NAME") == "push":
             environment = normal_child_environment(environ=environment)
-        # EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-z5cjph
         # The inventory key is the repository the authenticated pull-request read
         # confirmed (observe_event refuses a read whose base repository differs),
         # never a candidate-supplied path or a field of the event payload.
