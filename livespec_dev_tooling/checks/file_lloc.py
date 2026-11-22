@@ -95,13 +95,16 @@ from livespec_dev_tooling.checks._config_load import (  # noqa: E402
     resolve_check_context_or_report,
 )
 
-__all__: list[str] = []
+__all__ = ["LLOC_HARD_CEILING", "count_lloc"]
 
 CHECK_PURITY = "tree-pure"
 
 
 _LLOC_SOFT_CEILING = 200
-_LLOC_HARD_CEILING = 250
+LLOC_HARD_CEILING = 250
+# Retain the historical private name for pinned consumers while they migrate
+# to the public export above.
+_LLOC_HARD_CEILING = LLOC_HARD_CEILING
 _NON_LLOC_TOKEN_TYPES = frozenset(
     {
         tokenize.COMMENT,
@@ -137,7 +140,8 @@ def _docstring_lines(*, source: str) -> set[int]:
     return out
 
 
-def _count_lloc(*, source: str) -> int:
+def count_lloc(*, source: str) -> int:
+    """Return the executable logical-line count used by this check."""
     docstring_lines = _docstring_lines(source=source)
     code_lines: set[int] = set()
     tokens = tokenize.tokenize(BytesIO(source.encode("utf-8")).readline)
@@ -149,6 +153,11 @@ def _count_lloc(*, source: str) -> int:
             continue
         code_lines.add(line)
     return len(code_lines)
+
+
+# Retain the historical private name for pinned consumers while they migrate
+# to the public accessor above.
+_count_lloc = count_lloc
 
 
 def main() -> int:
@@ -172,10 +181,10 @@ def main() -> int:
     hard_offenders: list[tuple[Path, int]] = []
     for rel in universe:
         source = (root / rel).read_text(encoding="utf-8")
-        lloc = _count_lloc(source=source)
+        lloc = count_lloc(source=source)
         if lloc <= _LLOC_SOFT_CEILING:
             continue
-        if lloc > _LLOC_HARD_CEILING:
+        if lloc > LLOC_HARD_CEILING:
             hard_offenders.append((rel, lloc))
         else:
             soft_offenders.append((rel, lloc))
@@ -185,14 +194,14 @@ def main() -> int:
             file=str(path),
             lloc=lloc,
             soft_ceiling=_LLOC_SOFT_CEILING,
-            hard_ceiling=_LLOC_HARD_CEILING,
+            hard_ceiling=LLOC_HARD_CEILING,
         )
     for path, lloc in hard_offenders:
         log.error(
             "file LLOC exceeds 250-line hard ceiling",
             file=str(path),
             lloc=lloc,
-            hard_ceiling=_LLOC_HARD_CEILING,
+            hard_ceiling=LLOC_HARD_CEILING,
         )
     if hard_offenders:
         return 1
