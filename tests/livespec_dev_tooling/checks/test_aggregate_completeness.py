@@ -168,7 +168,11 @@ def test_real_check_recipe_is_legacy_readable_exact_inventory_mirror() -> None:
     wired = _legacy_core_v1_17_1_extract_check_slugs(justfile_text=justfile_text)
 
     assert wired == _normalized_real_target_inventory()
-    # 91 since livespec-dev-tooling-d2ysfg added the repo-private
+    # 92 since livespec-dev-tooling-ftdz2q added the canonical
+    # `check-hook-template-sandbox-image-path`, which derives every Fabro
+    # sandbox image's PATH from committed Dockerfile FROM chains and rejects a
+    # hook-template PATH that omits or reorders an image entry. The 91st was
+    # livespec-dev-tooling-d2ysfg's repo-private
     # `check-ansible-recipes-load-config`, which runs the root-level drift and
     # apply recipes and confirms their pinned ansible-core loads the provisioning
     # configuration with pipelining enabled. The 90th was
@@ -233,7 +237,7 @@ def test_real_check_recipe_is_legacy_readable_exact_inventory_mirror() -> None:
     # stays EXACT rather than becoming a `>=`: its job is to make any change to
     # the inventory a deliberate edit here, and a lower bound would let a silent
     # drop through.
-    assert wired is not None and len(wired) == 91
+    assert wired is not None and len(wired) == 92
     canonical = unsafe_perform_io(canonical_check_slugs().unwrap())
     assert not set(canonical).difference(wired)
     assert _legacy_core_v1_17_1_extract_check_slugs(justfile_text="default:\n    true\n") is None
