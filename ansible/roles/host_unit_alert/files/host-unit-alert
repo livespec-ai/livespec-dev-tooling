@@ -25,6 +25,9 @@
 # Exit status: 0 when at least one channel accepted the alert, 1 when every
 # configured channel failed or none is configured, so an alert that reached
 # nobody is a failed unit in the journal rather than a silent success.
+# Refuse xtrace: it would print the Honeycomb key this script expands.
+case $- in *x*) echo 'host-unit-alert: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2;; esac
+[[ "${SHELLOPTS:-}" == *xtrace* ]] && { echo 'host-unit-alert: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2; }
 set -uo pipefail
 
 unit="${1:-unknown.unit}"

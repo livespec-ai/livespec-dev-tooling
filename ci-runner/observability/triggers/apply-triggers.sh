@@ -30,6 +30,19 @@
 # service assigns (id, timestamps, defaults it fills in, a recipient's type and
 # target) is left out by construction. A definition edited by hand is thereby
 # reported BEFORE the next apply overwrites it.
+#
+# NEVER run this script with `bash -x` or with xtrace in SHELLOPTS: xtrace
+# prints every expansion, and the Honeycomb configuration key can write
+# triggers, boards and recipients. The two guards below refuse, with exit 2,
+# before any traced line can run. The key also never reaches curl's argument
+# vector (see hc).
+#
+# A definition whose dataset does not exist yet answers 404 "Dataset not
+# found" to the trigger list. That one answer is skipped and reported as
+# `dataset-missing <name> <dataset>` (drift mode exits non-zero for it, apply
+# mode does not); every other failure still fails the run.
+case $- in *x*) echo 'apply-triggers: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2;; esac
+[[ "${SHELLOPTS:-}" == *xtrace* ]] && { echo 'apply-triggers: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2; }
 set -euo pipefail
 
 MODE=apply
@@ -44,13 +57,27 @@ API="${HONEYCOMB_API:-https://api.honeycomb.io}"
 DATASET="${HONEYCOMB_TRIGGER_DATASET:-metrics}"
 : "${HONEYCOMB_CONFIG_KEY_LIVESPEC:?run through /usr/local/bin/with-livespec-env.sh -- (projects the livespec configuration key)}"
 
-hc() { curl --silent --show-error --fail-with-body --max-time 30 -H "X-Honeycomb-Team: ${HONEYCOMB_CONFIG_KEY_LIVESPEC}" -H 'Content-Type: application/json' "$@"; }
+# The key travels in a curl config read from a process substitution, so it is in
+# no argument vector (printf is a builtin) and in no file.
+hc() { curl --silent --show-error --fail-with-body --max-time 30 --config <(printf 'header = "X-Honeycomb-Team: %s"\n' "${HONEYCOMB_CONFIG_KEY_LIVESPEC}") -H 'Content-Type: application/json' "$@"; }
+
+# list_triggers URL: set `existing` to the trigger list. Returns 0 on success,
+# 44 when the answer is HTTP 404 with the body "Dataset not found" (the only
+# skippable failure), 1 on anything else (401/403, 5xx, transport errors).
+list_triggers() {
+  existing="$(hc "$@" 2>&1)" && return 0
+  case "${existing}" in
+    *'error: 404'*'Dataset not found'*|*'Dataset not found'*'error: 404'*) return 44 ;;
+    *) return 1 ;;
+  esac
+}
 
 # Every definition is attempted; a failure (typically Honeycomb refusing a
 # column that no datapoint has created yet — a gauge emitted only under
 # traffic) is reported and the script exits non-zero at the END, so one bad
 # definition never blocks the others.
 rc=0
+skipped=()
 body="$(mktemp)"
 trap 'rm -f "${body}"' EXIT
 for def in "${SCRIPT_DIR}"/*.json; do
@@ -79,7 +106,9 @@ PY
   if [ "${MODE}" = drift ]; then
     # Read-only: the list and the one live trigger are fetched with GET, and no
     # branch of this arm reaches the POST/PUT calls below.
-    existing="$(hc -X GET "${API}/1/triggers/${dataset}")"
+    lrc=0; list_triggers -X GET "${API}/1/triggers/${dataset}" || lrc=$?
+    if [ "${lrc}" -eq 44 ]; then skipped+=("${name} ${dataset}"); rc=1; continue; fi
+    if [ "${lrc}" -ne 0 ]; then echo "FAILED list ${name}: ${existing}" >&2; rc=1; continue; fi
     id="$(printf '%s' "${existing}" | python3 -c 'import json,sys; n=sys.argv[1]; print(next((t["id"] for t in json.load(sys.stdin) if t["name"]==n), ""))' "${name}")"
     if [ -z "${id}" ]; then
       echo "missing [${dataset}] ${name}"
@@ -151,7 +180,9 @@ PY
     continue
   fi
   python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d.pop("dataset", None); json.dump(d, open(sys.argv[2], "w"))' "${def}" "${body}"
-  existing="$(hc "${API}/1/triggers/${dataset}")"
+  lrc=0; list_triggers "${API}/1/triggers/${dataset}" || lrc=$?
+  if [ "${lrc}" -eq 44 ]; then skipped+=("${name} ${dataset}"); continue; fi
+  if [ "${lrc}" -ne 0 ]; then echo "FAILED list ${name}: ${existing}" >&2; rc=1; continue; fi
   id="$(printf '%s' "${existing}" | python3 -c 'import json,sys; n=sys.argv[1]; print(next((t["id"] for t in json.load(sys.stdin) if t["name"]==n), ""))' "${name}")"
   if [ -n "${id}" ]; then
     if out="$(hc -X PUT "${API}/1/triggers/${dataset}/${id}" --data-binary "@${body}")"; then
@@ -167,4 +198,5 @@ PY
     fi
   fi
 done
+for ((i = 0; i < ${#skipped[@]}; i++)); do echo "dataset-missing ${skipped[i]}"; done
 exit "${rc}"

@@ -19,6 +19,9 @@
 #   RUN_ID  - this workflow run's id (github.run_id)
 #   GH_TOKEN - gh auth token with actions:read (the workflow's GITHUB_TOKEN)
 #   HONEYCOMB_GITHUB_CI_INGEST_KEY_LIVESPEC - write-only Honeycomb ingest key
+# Refuse xtrace: it would print the Honeycomb key this script expands.
+case $- in *x*) echo 'export-ci-telemetry: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2;; esac
+[[ "${SHELLOPTS:-}" == *xtrace* ]] && { echo 'export-ci-telemetry: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2; }
 set -euo pipefail
 
 : "${REPO:?REPO required}"
