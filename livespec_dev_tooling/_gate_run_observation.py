@@ -11,6 +11,7 @@ from livespec_dev_tooling.gate_remote_job_status import reported_time, terminal_
 __all__: list[str] = ["GateTimingObservations"]
 
 _START_TIME = "startTime"
+_COMPLETION_TIME = "completionTime"
 
 
 @dataclass(kw_only=True)
@@ -28,7 +29,9 @@ class GateTimingObservations:
     def observe_terminal(self, *, status: Mapping[str, object], condition: str) -> None:
         """Retain the terminal condition timestamp once the client has read it."""
         self.observe_status(status=status)
-        self.terminal_at = terminal_transition_time(status=status, condition=condition)
+        self.terminal_at = terminal_transition_time(
+            status=status, condition=condition
+        ) or reported_time(status=status, key=_COMPLETION_TIME)
 
     def failure(self, *, failure: GateStepFailed) -> GateStepFailed:
         """Attach the submitted Job's readings without changing the failure step."""
