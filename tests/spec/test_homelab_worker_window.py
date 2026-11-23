@@ -50,6 +50,7 @@ case "$1 $2" in
   "get clusterqueue") cat "$s/cq" ;;
   "get resourceflavor") grep -qx "$3" "$s/flavors"; exit $? ;;
   "get node") [ -f "$s/node" ] || exit 1
+    case "$*" in *jsonpath*) printf '%s %s' "$3" "$(cat "$s/cordoned" 2>/dev/null || echo)"; exit 0 ;; esac
     n="$(cat "$s/node-fails" 2>/dev/null || echo 0)"
     if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$s/node-fails"; exit 1; fi
     printf '{"status":{"conditions":[{"type":"Ready","status":"%s"}]}}' "$(<"$s/node")" ;;
@@ -93,6 +94,16 @@ for line in open(sys.argv[1]):
         if p.get("phase", "Running") in ("Running", "Pending") and p["owner"] != "DaemonSet":
             sys.exit(1)' "$STUB_STATE/pods" || exit 1
 fi
+exit 0
+"""
+
+_STUB_LIMACTL = """#!/bin/bash
+printf 'limactl %s\\n' "$*" >> "$STUB_STATE/calls.log"
+case "$*" in
+  *"docker inspect"*) [ -f "$STUB_STATE/running" ] && echo true || echo false ;;
+  *"docker stop"*) rm -f "$STUB_STATE/running" ;;
+  *"docker start"*) : > "$STUB_STATE/running" ;;
+esac
 exit 0
 """
 
@@ -149,6 +160,7 @@ def env(tmp_path: Path) -> _Env:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     _exe(path=bin_dir / "kubectl", body=_STUB_KUBECTL)
+    _exe(path=bin_dir / "limactl", body=_STUB_LIMACTL)
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     for name in ("remove-worker.sh", "join-worker.sh", "departure-drill.sh"):
@@ -224,7 +236,8 @@ def _snapshot_then_change_queue(env: _Env) -> None:
 
 
 @pytest.mark.parametrize(
-    "action", ["snapshot", "archive-snapshot", "join", "drill", "remove", "check", "revert"]
+    "action",
+    ["snapshot", "archive-snapshot", "join", "drill", "remove", "stop", "start", "check", "revert"],
 )
 def test_every_action_refuses_a_node_confirm_that_is_not_the_workers_name(
     env: _Env, action: str
@@ -250,6 +263,52 @@ def test_drill_and_remove_are_fenced_to_the_node_by_name(env: _Env) -> None:
         f"departure-drill.sh {_HOST} --confirm-depart {_NODE}",
         f"remove-worker.sh {_HOST}",
     ]
+
+
+def _cordon(env: _Env) -> None:
+    (env.state / "cordoned").write_text("true", encoding="utf-8")
+    (env.state / "running").write_text("", encoding="utf-8")
+
+
+def test_stop_stops_the_kubelet_then_the_container_and_never_deletes_the_node(env: _Env) -> None:
+    _cordon(env)
+    _pods(env, {"ns": "kube-system", "name": "flannel", "owner": "DaemonSet"})
+    result = _run(env=env, action="stop")
+    assert result.returncode == 0, result.stderr
+    calls = _calls(env)
+    assert any("docker exec" in c and "systemctl stop kubelet" in c for c in calls)
+    assert any(c.endswith(f"docker stop {_NODE}") for c in calls)
+    assert not any("delete" in c for c in calls)
+    assert not (env.state / "running").exists()
+    assert not any(c.startswith("remove-worker.sh") for c in calls)
+
+
+def test_stop_refuses_an_uncordoned_node_and_changes_nothing(env: _Env) -> None:
+    (env.state / "running").write_text("", encoding="utf-8")
+    result = _run(env=env, action="stop")
+    assert result.returncode != 0
+    assert "not registered and cordoned" in result.stderr
+    assert not any("limactl" in c and "stop" in c for c in _calls(env))
+
+
+def test_stop_refuses_while_a_pod_no_daemonset_owns_is_bound(env: _Env) -> None:
+    _cordon(env)
+    _pods(env, {"ns": "arc-runners", "name": "runner-1", "owner": "EphemeralRunner"})
+    result = _run(env=env, action="stop")
+    assert result.returncode != 0
+    assert "arc-runners/runner-1" in result.stderr
+    assert not any("systemctl stop" in c for c in _calls(env))
+
+
+def test_start_starts_the_container_and_kubelet_and_never_uncordons(env: _Env) -> None:
+    _cordon(env)
+    (env.state / "running").unlink()
+    result = _run(env=env, action="start")
+    assert result.returncode == 0, result.stderr
+    calls = _calls(env)
+    assert any(c.endswith(f"docker start {_NODE}") for c in calls)
+    assert any("systemctl start kubelet" in c for c in calls)
+    assert not any("uncordon" in c or "delete" in c for c in calls)
 
 
 def test_snapshot_strips_server_metadata_records_its_time_and_is_never_overwritten(

@@ -28,6 +28,13 @@
 #             WINDOW_BOUND_SECONDS (a failed read is retried 3 times and is not
 #             "not Ready"), and no non-terminal pod a DaemonSet does not own may
 #             be bound to it. Either failure runs `revert` and exits 3.
+#   stop      take the worker out of service WITHOUT deleting its Node: the node must be
+#             registered and cordoned, and no Running or Pending pod a DaemonSet does not own
+#             may be bound to it (it never evicts). It stops the kubelet inside the worker
+#             container, then stops the container. The Node object, the kubelet's credentials
+#             and the worker queues are left as they are, so `start` returns the worker.
+#   start     the reversal of stop: start the worker container and its kubelet. It does not
+#             uncordon (that is ansible/k3s-window-drain.yml, action uncordon).
 #   revert    cordon the node, depart it (remove-worker.sh), and ONLY IF THE
 #             DEPARTURE SUCCEEDED restore gates-cq from the snapshot, then archive
 #             the snapshot as gates-cq-before.<UTC>.json. remove-worker.sh refuses
@@ -69,7 +76,7 @@ say() {
   printf '%s: %s\n' "$prog" "$*"
 }
 
-[ "$#" -eq 2 ] || die "usage: $prog snapshot|archive-snapshot|join|drill|remove|check|revert <host>"
+[ "$#" -eq 2 ] || die "usage: $prog snapshot|archive-snapshot|join|drill|remove|stop|start|check|revert <host>"
 action="$1"
 host="$2"
 case "$host" in
@@ -195,6 +202,48 @@ print(json.dumps([{"op": "replace", "path": "/spec/resourceGroups/%d/flavors" % 
   say "gates-cq cpu-group flavors restored from $snap"
 }
 
+in_vm() {
+  limactl shell --workdir / "$node" sudo "$@"
+}
+
+# do_stop: see the stop action above. Every read is checked and nothing is changed before
+# they pass; it never calls kubectl delete.
+do_stop() {
+  local present foreign running
+  present="$(kubectl get node "$node" --ignore-not-found -o 'jsonpath={.metadata.name} {.spec.unschedulable}')" ||
+    die "could not read Node $node; nothing was changed"
+  [ "$present" = "$node true" ] ||
+    die "Node $node is not registered and cordoned (read '$present'); cordon it first (ansible/k3s-window-drain.yml, action cordon). Nothing was changed"
+  foreign="$(kubectl get pods --all-namespaces --field-selector "spec.nodeName=$node" -o json)" ||
+    die "could not read the pods on $node; nothing was changed"
+  foreign="$(printf '%s' "$foreign" | python3 -c '
+import json, sys
+for p in json.load(sys.stdin).get("items", []):
+    if p.get("status", {}).get("phase") not in ("Running", "Pending") or any(
+            o.get("kind") == "DaemonSet" for o in p["metadata"].get("ownerReferences", [])):
+        continue
+    print("%s/%s" % (p["metadata"]["namespace"], p["metadata"]["name"]))')"
+  [ -z "$foreign" ] ||
+    die "Node $node still has running or pending pods no DaemonSet owns: $(printf '%s' "$foreign" | tr '\n' ' '). Let them finish or move them first. Nothing was changed"
+  in_vm true || die "could not reach VM $node through limactl; nothing was changed"
+  if running="$(in_vm docker inspect -f '{{.State.Running}}' "$node" 2>/dev/null)" && [ "$running" = true ]; then
+    in_vm docker exec "$node" systemctl stop kubelet || die "could not stop the kubelet in container $node; the container was left running"
+    say "kubelet stopped in container $node"
+    in_vm docker stop "$node" >/dev/null || die "could not stop container $node"
+    say "container $node stopped; Node $node is still registered and cordoned"
+  else
+    say "container $node is absent or already stopped; Node $node is still registered"
+  fi
+}
+
+# do_start: the reversal of do_stop. Starts the container and its kubelet; never uncordons.
+do_start() {
+  in_vm true || die "could not reach VM $node through limactl; nothing was changed"
+  in_vm docker start "$node" >/dev/null || die "could not start container $node"
+  in_vm docker exec "$node" systemctl start kubelet || die "could not start the kubelet in container $node"
+  say "container $node and its kubelet started; Node $node is still cordoned until the uncordon action lifts it"
+}
+
 do_revert() {
   say "REVERT: departing $node and restoring gates-cq"
   kubectl cordon "$node" >/dev/null || say "could not cordon $node; the removal below will refuse an uncordoned node"
@@ -249,6 +298,8 @@ case "$action" in
     ;;
   drill) exec "$scripts/departure-drill.sh" "$host" --confirm-depart "$node" ;;
   remove) exec "$scripts/remove-worker.sh" "$host" ;;
+  stop) do_stop ;;
+  start) do_start ;;
   check) do_check ;;
   revert) do_revert ;;
   *) die "unknown action '$action'" ;;
