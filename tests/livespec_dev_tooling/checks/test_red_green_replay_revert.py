@@ -46,18 +46,22 @@ import ast
 import base64
 import functools
 import importlib.util
+import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from returns.io import IOFailure, IOResult
+from returns.io import IOFailure, IOResult, IOSuccess
 from returns.unsafe import unsafe_perform_io
 
+from livespec_dev_tooling.checks import _red_green_replay_revert as forge_revert
 from livespec_dev_tooling.checks._red_green_replay_revert import (
     GITHUB_FORGE_TRUST_ROOT,
     RANGE_MISSING_TRAILERS_HINT,
@@ -127,6 +131,8 @@ _PYPROJECT = (
 )
 
 _A_PINNED_FINGERPRINT = "968479A1AFF927E37D1A566BB5690EEEBB952194"
+_FORGE_HOME_PREFIXES = ("rgr-forge-key-", "rgr-forge-trust-")
+_FORGE_HOME_CREATOR = ".rgr-forge-creator.json"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -172,9 +178,110 @@ def _gpg(*, home: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _process_start_time(*, pid: int) -> str | None:
+    """Return Linux's process-start identity component, if the process still exists."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        # The second stat field is a parenthesized executable name, which may
+        # itself contain spaces.  Everything after its final ')' starts at
+        # field three; starttime is field 22, or index 19 in that tail.
+        fields = stat.rsplit(")", maxsplit=1)[1].split()
+        return fields[19]
+    except (IndexError, OSError):
+        return None
+
+
+def _record_forge_home_creator(*, home: Path) -> None:
+    start_time = _process_start_time(pid=os.getpid())
+    if start_time is None:
+        return
+    (home / _FORGE_HOME_CREATOR).write_text(
+        json.dumps({"pid": os.getpid(), "start_time": start_time}), encoding="utf-8"
+    )
+
+
+def _creator_is_still_running(*, home: Path) -> bool:
+    try:
+        creator = json.loads((home / _FORGE_HOME_CREATOR).read_text(encoding="utf-8"))
+        pid = creator["pid"]
+        start_time = creator["start_time"]
+    except (KeyError, OSError, TypeError, ValueError):
+        return True
+    return (
+        isinstance(pid, int)
+        and isinstance(start_time, str)
+        and _process_start_time(pid=pid) == start_time
+    )
+
+
+def _forge_home(*, path: Path) -> bool:
+    return path.parent == Path(tempfile.gettempdir()) and path.name.startswith(_FORGE_HOME_PREFIXES)
+
+
+def _gpg_agent_homedir(*, pid: int) -> Path | None:
+    try:
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return None
+    if not argv or Path(argv[0].decode(errors="replace")).name != "gpg-agent":
+        return None
+    for index, arg in enumerate(argv):
+        decoded = arg.decode(errors="replace")
+        if decoded == "--homedir" and index + 1 < len(argv):
+            return Path(argv[index + 1].decode(errors="replace"))
+        if decoded.startswith("--homedir="):
+            return Path(decoded.removeprefix("--homedir="))
+    return None
+
+
+def _stop_missing_forge_home_agents() -> None:
+    """Terminate agents whose tracked home has already been removed."""
+    try:
+        proc_entries = tuple(Path("/proc").iterdir())
+    except OSError:
+        return
+    for entry in proc_entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        home = _gpg_agent_homedir(pid=pid)
+        if home is None or not _forge_home(path=home) or home.exists():
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            if _gpg_agent_homedir(pid=pid) == home:
+                os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def _discard_forge_home(*, home: Path) -> None:
+    with suppress(OSError):
+        _ = subprocess.run(
+            ["gpgconf", "--homedir", str(home), "--kill", "all"],
+            capture_output=True,
+            check=False,
+        )
+    shutil.rmtree(home, ignore_errors=True)
+
+
+def _sweep_orphaned_forge_homes() -> None:
+    """Clear homes left by a dead fixture process without touching live peers."""
+    try:
+        homes = tuple(Path(tempfile.gettempdir()).iterdir())
+    except OSError:
+        return
+    for home in homes:
+        if _forge_home(path=home) and home.is_dir() and not _creator_is_still_running(home=home):
+            _discard_forge_home(home=home)
+    _stop_missing_forge_home_agents()
+
+
 def _new_signing_key(*, uid: str) -> ForgeKey:
     """Generate a throwaway ed25519 signing key in its own GNUPGHOME."""
+    _sweep_orphaned_forge_homes()
     home = Path(tempfile.mkdtemp(prefix="rgr-forge-key-"))
+    _record_forge_home_creator(home=home)
     _gpg(
         home=home,
         args=["--passphrase", "", "--quick-generate-key", uid, "ed25519", "sign", "0"],
@@ -192,12 +299,7 @@ def _new_signing_key(*, uid: str) -> ForgeKey:
 
 
 def _discard_signing_key(*, key: ForgeKey) -> None:
-    _ = subprocess.run(
-        ["gpgconf", "--homedir", str(key.home), "--kill", "all"],
-        capture_output=True,
-        check=False,
-    )
-    shutil.rmtree(key.home, ignore_errors=True)
+    _discard_forge_home(home=key.home)
 
 
 @pytest.fixture(scope="session")
@@ -383,6 +485,43 @@ def test_unimportable_trust_root_material_grants_no_exemption(*, tmp_path: Path)
         ),
     )
     assert not _is_exempt(sha="HEAD", key=key)
+
+
+def test_trust_keyring_daemons_stop_before_the_temporary_home_is_removed(
+    *, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A gpg refusal still tears down every daemon using its private keyring."""
+    home = tmp_path / "rgr-forge-trust-test"
+    cleanup = ("gpgconf", "--homedir", str(home), "--kill", "all")
+    calls: list[tuple[str, ...]] = []
+
+    class TrackingTemporaryDirectory:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self) -> str:
+            home.mkdir()
+            return str(home)
+
+        def __exit__(self, *_: object) -> None:
+            assert cleanup in calls
+
+    def refuse_import(**_: object) -> IOSuccess[subprocess.CompletedProcess[str]]:
+        return IOSuccess(subprocess.CompletedProcess(args=["gpg"], returncode=1))
+
+    def record_cleanup(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(argv))
+        return subprocess.CompletedProcess(args=argv, returncode=0)
+
+    monkeypatch.setattr(forge_revert.tempfile, "TemporaryDirectory", TrackingTemporaryDirectory)
+    monkeypatch.setattr(forge_revert, "_run", refuse_import)
+    monkeypatch.setattr(forge_revert.subprocess, "run", record_cleanup)
+
+    assert not unsafe_perform_io(
+        forge_revert._verifies_against_trust_root(  # noqa: SLF001 — private helper under test.
+            sha="HEAD", trust_root=GITHUB_FORGE_TRUST_ROOT
+        ).unwrap()
+    )
 
 
 def test_is_forge_authored_revert_declares_a_railway_return_annotation() -> None:
