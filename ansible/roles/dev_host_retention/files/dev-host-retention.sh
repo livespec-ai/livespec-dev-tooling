@@ -43,7 +43,6 @@ set -uo pipefail
 RETENTION_DAYS=${LIVESPEC_DEV_HOST_RETENTION_DAYS:-7}
 WORKTREE_REPORT_DAYS=${LIVESPEC_DEV_HOST_WORKTREE_REPORT_DAYS:-3}
 WORKTREE_REPORT_THRESHOLD_GIB=${LIVESPEC_DEV_HOST_WORKTREE_REPORT_THRESHOLD_GIB:-40}
-WORKTREE_ROOT=${LIVESPEC_DEV_HOST_WORKTREE_ROOT:-$HOME/.worktrees}
 NTFY_TOPIC=${LIVESPEC_DEV_HOST_NTFY_TOPIC:-}
 NTFY_SERVER=${LIVESPEC_DEV_HOST_NTFY_SERVER:-https://ntfy.sh}
 CHECKOUT_ROOTS=${LIVESPEC_DEV_HOST_RETENTION_CHECKOUT_ROOTS:-/home/ubuntu/workspace}
@@ -54,6 +53,11 @@ BULK_DUMP_DIR=${LIVESPEC_DEV_HOST_BULK_DUMP_DIR:-/var/tmp/livespec-dumps}
 BULK_DUMP_CAP_BYTES=${LIVESPEC_DEV_HOST_BULK_DUMP_CAP_BYTES:-21474836480}
 RETENTION_USER=${LIVESPEC_DEV_HOST_RETENTION_USER:-root}
 UV_BIN=${LIVESPEC_DEV_HOST_RETENTION_UV_BIN:-uv}
+# The unit runs as root, so $HOME is root's: the worktrees to report are the
+# retention user's. $HOME is only the fallback for a hand run whose account the
+# passwd database cannot name.
+retention_home=$(getent passwd "$RETENTION_USER" 2>/dev/null | cut -d: -f6)
+WORKTREE_ROOT=${LIVESPEC_DEV_HOST_WORKTREE_ROOT:-${retention_home:-$HOME}/.worktrees}
 # 900s, not 300s: on 2026-11-21 the VPS's 45G, ~200k-file cache outran 300s every
 # night, the walk was cut off before it reached a root-owned .pyc, and the prune
 # then aborted on it. The prune-failure repair below is what makes a cut-off
