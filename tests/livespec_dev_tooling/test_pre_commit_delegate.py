@@ -40,16 +40,27 @@ def test_an_unreadable_gates_kubeconfig_runs_the_pre_commit_gate_locally(
 ) -> None:
     """An opted-in repository without the host credential retains its local gate."""
     module = _module()
+    emitted: list[dict[str, str | None]] = []
     _ = (tmp_path / "pyproject.toml").write_text(
         "[tool.livespec_dev_tooling]\ndelegated_pre_commit = true\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(module, "gates_kubeconfig_readable", lambda: False)
+    monkeypatch.setattr(module, "emit_gate_outcome", lambda **event: emitted.append(event))
 
     verdict = module.run_pre_commit(repo_root=tmp_path)
 
     assert verdict.local is True
     assert verdict.reason == "gates kubeconfig is not readable"
+    assert emitted == [
+        {
+            "outcome": "no-verdict",
+            "repository": tmp_path.name,
+            "tree_hash": None,
+            "job_name": None,
+            "stage": "pre-commit",
+        }
+    ]
 
 
 def test_a_credentialed_pre_commit_delegates_the_staged_tree(
