@@ -17,6 +17,7 @@ import pytest
 from returns.io import IOFailure, IOSuccess
 from returns.result import Failure, Success
 
+import livespec_dev_tooling._incident_fleet_command as fleet_command
 from livespec_dev_tooling._incident_fleet_capabilities import CAPABILITIES, SURFACE_CAPABILITY
 from livespec_dev_tooling._incident_fleet_command import (
     FleetReport,
@@ -246,6 +247,62 @@ def test_an_instruction_only_consumers_guidance_hooks_are_read_even_without_clai
 def test_a_capability_that_cannot_be_read_is_printed_as_unread() -> None:
     report = _run_audit(unreadable=frozenset({("example/tooling", "templates")}))
     assert "serving\texample/tooling\ttemplates\t-" in render_report(report=report)
+
+
+def test_an_adopter_with_a_hosted_incident_ci_runner_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Observer-dependent CI on a hosted runner cannot reach the tailnet observer."""
+
+    def read_serving(*, repository: str, capability: str) -> str:
+        _ = repository, capability
+        return "v1.0.0"
+
+    expression = "fromJSON('[\"ubuntu-latest\"]')"
+    workflow = f"""jobs:
+  incident-ci:
+    runs-on: ${{{{ {expression} }}}}
+"""
+    read_ci = Mock(return_value=workflow)
+    monkeypatch.setattr(fleet_command, "_read_adopter_ci_workflow", read_ci, raising=False)
+    manifest = (
+        '{"owner": "example", "fleet": [], "adopters": '
+        '[{"repo": "adopter", "profile": ["baseline"], "posture": "released"}]}'
+    )
+    digest = hashlib.sha256(manifest.encode()).hexdigest()
+    claims = tuple(
+        CapabilityEvidence(
+            repository="example/adopter",
+            surface=surface,
+            disposition="implemented",
+            manifest_sha256=digest,
+            source_path="installed/component.py",
+            release_build="v1.0.0",
+            serving_build="",
+            proof_ref="independent-host-proof:receipt-1",
+            owner="controller-owner",
+            incident_item="incident-1",
+            cumulative_scope="b" * 64,
+            normal_factory_proof="factory:scope",
+        )
+        for surface in SURFACES
+    )
+    manifests = iter((manifest, manifest))
+    report = run_fleet_audit(
+        read_manifest=lambda: next(manifests, None),
+        claims=claims,
+        read_serving=read_serving,
+    )
+
+    facts = (
+        read_ci.call_args_list == [(("example/adopter",), {})],
+        "example/adopter" not in report.audit.ready_repositories,
+        any(
+            "example/adopter" in finding and "incident-ci" in finding and expression in finding
+            for finding in report.audit.findings
+        ),
+    )
+    assert facts == (True, True, True)
 
 
 def test_exits_non_zero_naming_the_surface_and_consumer_of_every_unclassified_row() -> None:
