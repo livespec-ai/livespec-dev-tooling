@@ -376,7 +376,6 @@ def test_the_probe_fails_on_a_missing_variable_or_any_aws_variable(
     assert _SECRET not in output
 
 
-# EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-gtx5nl
 def _caam_dest(*, root: Path) -> Path:
     return root / "home" / ".local" / "bin" / "caam"
 
