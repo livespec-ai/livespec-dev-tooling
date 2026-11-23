@@ -1829,6 +1829,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: dev host retention's uv-cache ownership walk cut off by its budget carries on from the changed paths",
+    "work_item": "livespec-dev-tooling-umy3ry",
+    "first_seen": "2026-11-23"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: every k3s pool node's load is visible and a silent node fires its dead-man",
     "work_item": "livespec-dev-tooling-r5o5zh",
     "first_seen": "2026-10-24"

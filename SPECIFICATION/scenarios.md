@@ -6603,3 +6603,17 @@ Then the run's log names the merged, clean, aged worktree with its repository, b
 And it names neither of the other two
 
 And all three worktrees are still present after the run
+
+## Scenario: dev host retention's uv-cache ownership walk cut off by its budget carries on from the changed paths
+
+Given a dev host whose uv cache is too large for the ownership walk to finish inside its budget, and holds no recorded walk start
+
+When the retention run executes
+
+Then the walk stops at its budget, the prune still runs, and the run logs the walk as cut off with its duration
+
+And the walk's start time is recorded
+
+When a path owned by another user is written into the cache, and the retention run executes again
+
+Then the second walk visits only the paths changed since the recorded start, hands that path back to the cache owner before the prune, and logs the walk as completed
