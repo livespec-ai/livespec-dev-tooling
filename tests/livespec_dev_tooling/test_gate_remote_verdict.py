@@ -90,6 +90,40 @@ def _job_status(*, state: str) -> str:
     return json.dumps({"status": {"conditions": [{"type": state, "status": str(finished)}]}})
 
 
+def test_a_no_verdict_after_a_terminal_read_retains_the_terminal_timestamp(
+    *, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Telemetry can distinguish a terminal Job from a wait that never reached one."""
+    from livespec_dev_tooling.gate_remote_invocation import GateStepFailed
+
+    terminal_at = "2026-11-23T10:09:15Z"
+
+    def terminal_observed_but_logs_unavailable(**kwargs: object) -> Failure[GateStepFailed]:
+        _ = kwargs
+        return Failure(
+            GateStepFailed(
+                step="stream-gate-logs",
+                argv=("kubectl", "logs"),
+                returncode=None,
+                detail="kubectl not on PATH",
+                job_name=_JOB,
+                job_created_at="2026-11-23T10:00:00Z",
+                job_started_at="2026-11-23T10:02:30Z",
+                job_terminal_at=terminal_at,
+            )
+        )
+
+    monkeypatch.setattr(
+        "livespec_dev_tooling.gate_remote_verdict.run_gate",
+        terminal_observed_but_logs_unavailable,
+    )
+
+    verdict = run_gated_push(request=_REQUEST, runner=_StubCluster(), sleeper=_no_sleep)
+
+    assert verdict.state == GATE_NO_VERDICT
+    assert verdict.job_terminal_at == terminal_at
+
+
 # Marker token → step name, tried IN ORDER: the first marker present in an argv
 # names the step, and `get-job` is what is left when none matches. The order is
 # load-bearing twice over — the delete argv also carries `push`, and the token

@@ -118,7 +118,6 @@ from livespec_dev_tooling.gate_remote_job_status import (
     created_job_time,
     created_job_tree_hash,
     reported_time,
-    terminal_transition_time,
 )
 from livespec_dev_tooling.gate_remote_request import GATE_NAMESPACE, GateRunRequest
 
@@ -329,7 +328,7 @@ def _delete_gate_ref(*, request: GateRunRequest, runner: GateCommandRunner) -> S
     )
 
 
-def _gate_a_pushed_tree(  # noqa: PLR0915 — lifecycle branches must preserve cleanup ordering.
+def _gate_a_pushed_tree(  # noqa: PLR0911, PLR0915 — lifecycle branches preserve cleanup ordering.
     *,
     request: GateRunRequest,
     runner: GateCommandRunner,
@@ -442,6 +441,7 @@ def _gate_a_pushed_tree(  # noqa: PLR0915 — lifecycle branches must preserve c
             with_record_path(failure=observed.failure(failure=terminal.failure()), path=saved)
         ), False
     ended = terminal.unwrap()
+    observed.observe_terminal(status=ended.status, condition=ended.condition)
     # Read only when there is a failure to explain. That is a decision about
     # whether to spend an API call, NOT an adjudication: the pod's readings are
     # carried verbatim either way and this slice still forms no opinion about them.
@@ -470,6 +470,8 @@ def _gate_a_pushed_tree(  # noqa: PLR0915 — lifecycle branches must preserve c
         argv=logs_argv,
         outcome=runner(argv=logs_argv, cwd=request.repo_root, stream=not request.capture_output),
     )
+    if isinstance(streamed, Failure):
+        return Failure(observed.failure(failure=streamed.failure())), True
     return (
         streamed.map(
             lambda ran: GateRunOutcome(
@@ -482,9 +484,7 @@ def _gate_a_pushed_tree(  # noqa: PLR0915 — lifecycle branches must preserve c
                 created_at=created_at,
                 started_at=reported_time(status=ended.status, key=_START_TIME),
                 finished_at=reported_time(status=ended.status, key=_COMPLETION_TIME),
-                terminal_at=terminal_transition_time(
-                    status=ended.status, condition=ended.condition
-                ),
+                terminal_at=observed.terminal_at,
                 output_checksum=shown_output_checksum(request=request, output=ran.stdout),
                 member_verdicts=(
                     parse_member_report(output=ran.stdout) if request.capture_output else None

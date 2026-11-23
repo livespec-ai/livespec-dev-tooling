@@ -753,6 +753,40 @@ def test_a_non_zero_log_stream_exit_does_not_fail_the_run() -> None:
     assert outcome.unwrap().logs_returncode == 1
 
 
+def test_a_log_stream_that_never_starts_retains_the_terminal_clock_reading() -> None:
+    """An observed terminal condition remains evidence on a later plumbing failure."""
+    created_at = "2026-11-23T10:00:00Z"
+    started_at = "2026-11-23T10:02:30Z"
+    terminal_at = "2026-11-23T10:09:15Z"
+    cluster = _StubCluster(
+        never_runs=("stream-logs",),
+        created_payload=json.dumps(
+            {"metadata": {"name": _JOB, "creationTimestamp": created_at}}
+        ),
+        job_status_payload=json.dumps(
+            {
+                "status": {
+                    "startTime": started_at,
+                    "conditions": [
+                        {
+                            "type": "Complete",
+                            "status": "True",
+                            "lastTransitionTime": terminal_at,
+                        }
+                    ],
+                }
+            }
+        ),
+    )
+
+    outcome = run_gate(request=_REQUEST, runner=cluster, sleeper=cluster.sleep)
+
+    assert isinstance(outcome, Failure)
+    assert outcome.failure().job_created_at == created_at
+    assert outcome.failure().job_started_at == started_at
+    assert outcome.failure().job_terminal_at == terminal_at
+
+
 def test_the_gate_ref_is_deleted_on_the_success_path() -> None:
     """The client is the FIRST collector; the mirror's sweep is the second.
 

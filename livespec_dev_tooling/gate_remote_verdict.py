@@ -215,6 +215,7 @@ def _no_verdict(*, failure: GateStepFailed) -> GateVerdict:
         job_name=failure.job_name,
         job_created_at=failure.job_created_at,
         job_started_at=failure.job_started_at,
+        job_terminal_at=failure.job_terminal_at,
         no_verdict_cause=(
             "client-interrupted" if "terminated by" in failure.detail else "delegation"
         ),
