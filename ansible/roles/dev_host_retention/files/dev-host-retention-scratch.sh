@@ -157,6 +157,7 @@ cap_bulk_dumps() {
             continue
         fi
         if [[ ! -e $path ]]; then
+            total=$((total - size))
             log "WARNING: skipped bulk dump $path: it vanished"
             continue
         fi
