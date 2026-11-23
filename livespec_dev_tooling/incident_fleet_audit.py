@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import replace
 
 from livespec_dev_tooling._incident_fleet_capabilities import SURFACE_CAPABILITY
-from livespec_dev_tooling._incident_fleet_row_gap import row_gap
-from livespec_dev_tooling._incident_fleet_shared_surface import shared_surface_determination
+from livespec_dev_tooling._incident_fleet_citation import citation_reader
+from livespec_dev_tooling._incident_fleet_row_gap import RowReaders, row_gap
 from livespec_dev_tooling._incident_fleet_types import (
     CapabilityEvidence,
     FleetAudit,
@@ -106,15 +106,13 @@ def _judged(*, evidence: CapabilityEvidence | None, surface: str) -> CapabilityE
     return evidence
 
 
-def _consumer_rows(  # noqa: PLR0913 — each reader and identity input is independently injected.
+def _consumer_rows(
     *,
     repository: str,
     instruction_only: bool,
     manifest_sha256: str,
     indexed: dict[tuple[str, str], CapabilityEvidence],
-    verify_evidence: Callable[[CapabilityEvidence], bool],
-    explain: Callable[[CapabilityEvidence], str],
-    citation: Callable[[CapabilityEvidence], str],
+    readers: RowReaders,
 ) -> tuple[SurfaceDisposition, ...]:
     rows: list[SurfaceDisposition] = []
     for surface in SURFACES:
@@ -135,9 +133,7 @@ def _consumer_rows(  # noqa: PLR0913 — each reader and identity input is indep
             manifest_sha256=manifest_sha256,
             instruction_only=instruction_only,
             inapplicable=inapplicable,
-            confirmed=verify_evidence,
-            explain=explain,
-            citation=citation,
+            readers=readers,
         )
         if gap or evidence is None:
             rows.append(
@@ -179,14 +175,13 @@ def _ready(
     )
 
 
-def audit_incident_fleet(  # noqa: PLR0913 — the audit's authenticated reads remain explicit seams.
+def audit_incident_fleet(
     *,
     manifest: Manifest,
     manifest_sha256: str,
     evidence: tuple[CapabilityEvidence, ...],
     verify_manifest: Callable[[Manifest, str], bool],
     verify_evidence: Callable[[CapabilityEvidence], bool],
-    verify_proving_incident: Callable[[CapabilityEvidence], bool] | None = None,
     explain: Callable[[CapabilityEvidence], str] = lambda _row: "",
 ) -> FleetAudit:
     """Expand authenticated current membership, including every declared adopter.
@@ -197,38 +192,12 @@ def audit_incident_fleet(  # noqa: PLR0913 — the audit's authenticated reads r
     `explain` may name why a claim cannot classify against what was read. Every unclassified
     row names its missing evidence: that reason when it names one, otherwise the first gap
     the row has (no claim, a malformed or foreign-identity claim, an unreadable or stale
-    serving version, or a re-read that did not confirm it).
+    serving version, or a re-read that did not confirm it). A claim citing another adopter's
+    proving incident borrows it only where the committed configuration records its surface as
+    fully determined by the shared build and the cited incident authenticates as an own claim.
     This function creates no credentials, lifecycle records or activation effects.
     """
     consumers = _consumers(manifest=manifest)
-
-    def citation_gap(
-        *,
-        claim: CapabilityEvidence,
-    ) -> str:
-        capability = SURFACE_CAPABILITY.get(claim.surface, "")
-        determination = shared_surface_determination(surface=claim.surface)
-        if capability not in {"gate-readers", "templates", "driver-hooks"}:
-            return f"{claim.surface} is not served by a shared build"
-        if determination is None:
-            return f"{claim.surface} has no committed shared-surface determination"
-        if not determination.fully_determined:
-            inputs = ", ".join(determination.adopter_configuration)
-            return f"{claim.repository}: {claim.surface} reads adopter configuration: {inputs}"
-        if claim.proving_release_build != claim.release_build:
-            return (
-                f"cited release {claim.proving_release_build} differs from serving version read "
-                f"{claim.serving_build or '-'}"
-            )
-        verifier = verify_proving_incident or verify_evidence
-        if verifier(claim) is not True:
-            return (
-                f"cited release {claim.proving_release_build} for "
-                f"{claim.proving_repository} incident {claim.proving_incident_item} "
-                f"does not authenticate; serving version read {claim.serving_build or '-'}"
-            )
-        return ""
-
     names = tuple(repository for repository, _instruction_only in consumers)
     if (
         not manifest.owner
@@ -244,6 +213,16 @@ def audit_incident_fleet(  # noqa: PLR0913 — the audit's authenticated reads r
             ready_repositories=(),
         )
     indexed, invalid_evidence = _index_evidence(evidence=evidence, consumers=consumers)
+    readers = RowReaders(
+        confirmed=verify_evidence,
+        explain=explain,
+        citation=citation_reader(
+            indexed=indexed,
+            manifest_sha256=manifest_sha256,
+            confirmed=verify_evidence,
+            explain=explain,
+        ),
+    )
     rows = tuple(
         row
         for repository, instruction_only in consumers
@@ -252,9 +231,7 @@ def audit_incident_fleet(  # noqa: PLR0913 — the audit's authenticated reads r
             instruction_only=instruction_only,
             manifest_sha256=manifest_sha256,
             indexed=indexed,
-            verify_evidence=verify_evidence,
-            explain=explain,
-            citation=lambda row: citation_gap(claim=row),
+            readers=readers,
         )
     )
     findings = invalid_evidence + tuple(

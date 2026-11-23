@@ -76,16 +76,20 @@ capabilities.
 `config/incident-fleet-shared-surfaces.json` is the committed classification for every
 surface. It records whether the released gate-reader, template, or driver-hook build fully
 determines that surface, and names adopter-owned configuration that prevents that conclusion.
-The reader-file test holds the classification to the exact surface roots and inputs its reader
-uses; a claim cannot assert this property for itself.
+The reader-file test holds every classification to the exact file set its reader reaches: a
+surface recorded as fully determined must reach no adopter configuration, and a surface that
+reaches any must declare it. A claim cannot assert this property for itself.
 
 An implemented, release-keyed claim on a fully determined shared surface may cite the
 authenticated proving incident of another adopter. The citation must name the proving
 repository, incident item, and the release build it proved; that build must be the release the
-consumer serves. The audit re-authenticates the proving record and still independently reads the
-consumer's serving version. A missing coordinate, an unauthenticated record, a different proved
-release, or a changed serving release leaves the row unclassified and names the cited release and
-the serving version read.
+consumer serves. The proving incident authenticates as it would for a claim of its own adopter:
+the audit finds that adopter's committed claim for the same surface, requires it to name the same
+incident item and release build and not itself to cite another incident, and judges it with the
+checks any claim passes (manifest identity, complete incident evidence, its own serving read and
+independent re-read). The audit still independently reads the consumer's serving version. A
+missing coordinate, an unauthenticated record, a different proved release, or a changed serving
+release leaves the row unclassified and names the cited release and the serving version read.
 
 A surface that reads adopter configuration cannot borrow proof. For example, `Focused test
 selection` reads the adopter's `.livespec.jsonc` and `[tool.livespec_dev_tooling]` table, so a
