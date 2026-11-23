@@ -91,7 +91,10 @@ spec:
               # "gmktec 8: cohort 31 (2026-11-16)".
               # 4 -> 5 on 2026-11-18: the unit follows gamingpc 3 -> 4, cohort 31 -> 32. See DERIVATION.md
               # "gamingpc 4: cohort 32 (2026-11-18)".
-              nominalQuota: 6
+              # 6 -> 7 on 2026-11-23: gmktec-xubuntu 1 -> 2 churn slots, cohort 31 -> 32, the new slot to
+              # this queue (8 runner workloads pending, 9 borrowed). See DERIVATION.md "gmktec 2: cohort 32
+              # (2026-11-23)".
+              nominalQuota: 7
         # The arm64 container workers' churn slots (livespec-dev-tooling-eorpen), listed AFTER
         # the fleet flavor at nominalQuota 0: this repository reaches a worker only by borrowing
         # once the fleet flavor, its own quota and what it can borrow, has no slot left. Listed
@@ -111,7 +114,7 @@ spec:
         - name: runner-memory-flavor
           resources:
             - name: memory
-              nominalQuota: 66Gi
+              nominalQuota: 77Gi
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue

@@ -1503,7 +1503,7 @@ was deleted on 2026-10-22, when the rule itself exceeded it.
 | `fabro` | 1 | 6 | **2** | 2026-11-05 | First cold run stays within its storage and Slow SQL limits | Restore the rule value 6 |
 | `livespec-orchestrator-master` | 1 | 6 | **4** | 2026-11-12 | After converge, its listener and GitHub label are present | Restore the rule value 6 |
 | `livespec-dev-tooling` | 7 | 14 | **20** | 2026-11-20 | Within 24 h, it borrows while small queues are idle and pending stays bounded | Restore the rule value 14 |
-| `livespec-orchestrator-beads-fabro` | 6 | 12 | **24** | 2026-11-18 | In 24 h, fewer than 10 ceiling/free-slot minutes and no added kine Slow SQL | Restore maxRunners 14 |
+| `livespec-orchestrator-beads-fabro` | 7 | 14 | **24** | 2026-11-18 | In 24 h, fewer than 10 ceiling/free-slot minutes and no added kine Slow SQL | Restore maxRunners 14 |
 
 **`fabro`, 6 to 2 (2026-11-05).** The rule's 2x multiple is kept and its floor
 of 6 is waived. The floor protects a small-quota repository with a 13–21-job
@@ -2977,3 +2977,59 @@ wait of minutes. That is the price of the lend, accepted by R301.
 `test_orchestrator_master_push_has_a_dedicated_converged_lane`. Apply through the same `ci_converge_unit` route.
 Revert if master pushes wait more than about 10 minutes for admission once merges resume, or when the coordinator
 ends the incident. The live objects before this change are backed up in the incident report.
+
+
+## gmktec 2: cohort 32 (2026-11-23)
+
+**Why.** legacy-coordinator-agent ruled R301 on 2026-11-23, after the STRANDED-CAPACITY flag of 18:22Z, plan
+gate-job-resources (epic livespec-dev-tooling-ukoeah). It reverses the 2026-11-22 hold of gmktec at 1, on a gate it set
+and this seat measured: with about 8 factory runs live on gmktec, requested memory plus one more 11Gi slot stays at or
+under 80 percent of allocatable and memory PSI avg60 is under 10.
+
+**The live reading** (`kubectl describe node gmktec-xubuntu`, `/proc/pressure/memory`, 2026-11-23 18:28Z, factory restart
+under way):
+
+| Quantity | Value |
+| --- | ---: |
+| allocatable memory | 65466156Ki (63932Mi, 62.4Gi) |
+| memory requests (all pods) | 30186Mi (29.5Gi, 47 percent) |
+| requests plus one 11Gi slot | 41450Mi (64.8 percent) |
+| memory PSI some avg60 / full avg60 | 0.00 / 0.00 |
+| memory in use (`free -m`, used) | 23971Mi |
+| cpu requests | 10100m of 32 (31 percent) |
+| `ci-runner.io/churn-slot` | 1 of 1 in use |
+
+Every Ready node's slots were fully used at the same read (poweredge 22 of 22, hp 2 of 2, gmktec 1 of 1) with 11 runner
+pods SchedulingGated, 4 Pending and 11 Workloads pending (8 orchestrator, 3 orchestrator-master), so gmktec is the one node
+with both cpu and memory headroom.
+
+**The change.** gmktec 1 -> 2, cohort 31 -> 32 (poweredge 22 + gmktec 2 + hp 2 + gamingpc 6). The new unit goes to
+livespec-orchestrator-beads-fabro-cq first (the rule of the earlier raises: the queue holding waiting work): 6 -> 7, memory
+66Gi -> 77Gi. Every other queue is unchanged and `maxRunners` stays 24 (rule value 14 at quota 7).
+
+**The memory quota.** The headroom row below is recomputed from the live reading, all pods' requests counted as in the
+2026-11-20 row: floor(62.4 - 29.5 - 0) = 32Gi (it was 8Gi). The cohort is 32 + 12 + 254 + 68 = 366Gi;
+floor(366 / 32) = 11Gi per slot, so each queue's memory nominal stays its churn slots x 11Gi and only orchestrator-cq
+changes. The 13 x86 queues sum to 352Gi against 366Gi.
+
+| ResourceFlavor | node | allocatable Gi | factory requests Gi | gates requests Gi | calculation | memory nominalQuota |
+| --- | --- | ---: | ---: | ---: | --- | ---: |
+| `headroom-gmktec` | gmktec-xubuntu | 62.4 | 29.5 | 0 | max(0, floor(62.4 - 29.5 - 0)) | 32Gi |
+
+**Revert triggers.** Any one of these on a gmktec read takes the node back to 1:
+
+1. gmktec requested memory above 80 percent of allocatable, or memory PSI some avg60 above 10.
+2. gmktec cpu PSI `some` avg60 above 30.
+3. Any factory pod OOMKilled or Pending on gmktec.
+4. A runner pod Kueue admitted to gmktec that stays Pending over 5 minutes (request-fit).
+
+**REVERT** restores `ADMISSION_CAPACITY_C=1` in `../../phase0-bare-metal/profiles/gmktec-xubuntu.env`, orchestrator-cq
+churn quota 7 -> 6 and memory 77Gi -> 66Gi, and the `headroom-gmktec` row to 62.4 / 53.8 / 0 / 8Gi, through the same files
+and apply route. On the way down apply the quota first, then the node, so the quota never exceeds the capacity.
+
+**Order of apply (a separate, reviewed step, not part of this change).** Raise the node capacity first
+(`node_extended_resource`, `--limit gmktec-xubuntu`), then `ci_converge_unit`, so the quota never promises a slot the node
+does not advertise.
+
+**Before and after.** Before (18:28Z): 11 pending Workloads, 11 gated plus 4 Pending runner pods, 28 admitted against 25
+Ready slots. The after count is read from the same commands once the apply lands.
