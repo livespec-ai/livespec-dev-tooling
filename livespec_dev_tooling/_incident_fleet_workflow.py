@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -19,6 +20,8 @@ _OBSERVER_INPUTS = (
     "LIVESPEC_INCIDENT_OBSERVER_QUERY_TOKEN",
 )
 _TAILNET_LABELS = ("local-ci", "k3s")
+_OMITTED_OUTPUT = "outputs.omitted"
+_OMISSION_MARKER = "omitted_by_incident_policy"
 
 
 def _mapping(*, value: object) -> Mapping[str, Any]:
@@ -83,6 +86,56 @@ def _observer_input_findings(*, repository: str, jobs: Mapping[str, Any]) -> tup
     return tuple(findings)
 
 
+def _names(*, member: str, text: str) -> bool:
+    return re.search(rf"(?<![\w-]){re.escape(member)}(?![\w-])", text) is not None
+
+
+def _omission_condition(*, member: str, condition: object, matrix: str) -> bool:
+    text = str(condition)
+    return _OMITTED_OUTPUT in text and (_names(member=member, text=text) or matrix in text)
+
+
+def _bound_omission_variables(*, step: Mapping[str, Any]) -> tuple[str, ...]:
+    env = _mapping(value=step.get("env"))
+    return tuple(key for key, value in env.items() if _OMITTED_OUTPUT in str(value))
+
+
+def _shell_guarded(*, member: str, step: Mapping[str, Any]) -> bool:
+    variables = _bound_omission_variables(step=step)
+    if not variables:
+        return False
+    for line in str(step.get("run", "")).splitlines():
+        if not _names(member=member, text=line):
+            continue
+        referenced = _OMISSION_MARKER in line.lower().replace("-", "_") or any(
+            variable in line for variable in variables
+        )
+        if not (referenced and any(operator in line for operator in ("||", "&&", "if "))):
+            return False
+    return True
+
+
+def _step_runs_member(*, member: str, step: Mapping[str, Any], member_job: bool) -> bool:
+    text = f"{step.get('run', '')} {step.get('uses', '')} {step.get('with', '')}"
+    executes = bool(step.get("run") or step.get("uses"))
+    return executes and (member_job or _names(member=member, text=text))
+
+
+def _job_omits_member(*, member: str, name: object, job: Mapping[str, Any]) -> bool:
+    if "uses" in job:
+        return _OMITTED_OUTPUT in str(_mapping(value=job.get("with")).get("incident-omitted"))
+    member_job = str(name) == member or _names(member=member, text=str(job.get("strategy", "")))
+    for step in _steps(job=job):
+        if not _step_runs_member(member=member, step=step, member_job=member_job):
+            continue
+        guarded = _omission_condition(
+            member=member, condition=step.get("if"), matrix="matrix."
+        ) or _shell_guarded(member=member, step=step)
+        if not guarded:
+            return False
+    return True
+
+
 def _inventory_findings(*, repository: str, jobs: Mapping[str, Any]) -> tuple[str, ...]:
     try:
         not_applicable = tuple(
@@ -96,8 +149,9 @@ def _inventory_findings(*, repository: str, jobs: Mapping[str, Any]) -> tuple[st
     for member in not_applicable:
         for name, value in jobs.items():
             job = _mapping(value=value)
-            body = str(job)
-            if member in body and "omitted-by-incident-policy" not in body:
+            if not (_names(member=member, text=str(job)) or str(name) == member):
+                continue
+            if not _job_omits_member(member=member, name=name, job=job):
                 findings.append(
                     "".join(
                         (

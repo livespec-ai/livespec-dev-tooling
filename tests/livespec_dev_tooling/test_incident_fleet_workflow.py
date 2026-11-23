@@ -73,11 +73,57 @@ def test_workflow_findings_accept_a_routed_replay_with_observer_inputs_and_omiss
           LIVESPEC_INCIDENT_OBSERVER_QUERY_TOKEN: token
   checks:
     steps:
-      - run: echo omitted-by-incident-policy
-      - run: just check-slow
+      - name: omitted-by-incident-policy
+        if: ${{ needs.incident-ci.result == 'success' && contains(fromJSON(needs.incident-ci.outputs.omitted || '[]'), 'check-slow') }}
+        run: echo "omitted-by-incident-policy check-slow"
+      - name: just check-slow
+        if: ${{ !(needs.incident-ci.result == 'success' && contains(fromJSON(needs.incident-ci.outputs.omitted || '[]'), 'check-slow')) }}
+        run: just check-slow
+  batched:
+    steps:
+      - env:
+          OMITTED_BY_INCIDENT_POLICY: ${{ needs.incident-ci.outputs.omitted }}
+        run: |
+          omitted_by_incident_policy check-slow || just check-slow
+  reusable:
+    uses: ./.github/workflows/reusable-check-matrix.yml
+    with:
+      checks: '["check-slow"]'
+      incident-omitted: ${{ needs.incident-ci.outputs.omitted }}
 """,
     )
     assert findings == ()
+
+
+def test_workflow_findings_refuse_a_decoy_omission_marker_beside_an_unguarded_member(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Text naming the omission marker is not a guard on the step that runs the member."""
+    monkeypatch.setattr(
+        module,
+        "load_repository_inventory",
+        _not_applicable_inventory,
+    )
+    routed = """jobs:
+  incident-ci:
+    runs-on: [self-hosted, k3s]
+"""
+    decoys = (
+        "  checks:\n    steps:\n      - run: echo omitted-by-incident-policy\n"
+        "      - run: just check-slow\n",
+        "  checks:\n    steps:\n      - name: omitted-by-incident-policy\n"
+        "        run: just check-slow\n",
+        "  checks:\n    steps:\n      - env:\n          OMITTED: ${{ needs.incident-ci.outputs.omitted }}\n"
+        "        run: |\n          echo omitted-by-incident-policy\n          just check-slow\n",
+        "  checks:\n    uses: ./.github/workflows/reusable-check-matrix.yml\n"
+        "    with:\n      checks: '[\"check-slow\"]'\n",
+    )
+    for decoy in decoys:
+        findings = module.workflow_findings(repository="example/adopter", workflow=routed + decoy)
+        assert any(
+            "check-slow" in finding and "incident-policy omission" in finding
+            for finding in findings
+        ), decoy
 
 
 def test_workflow_findings_refuse_an_unavailable_inventory(
