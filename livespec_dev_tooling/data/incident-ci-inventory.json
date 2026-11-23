@@ -429,6 +429,14 @@
       "batch": "check-metadata-batch",
       "classification": "fast",
       "consumes": [],
+      "name": "check-hook-template-sandbox-image-path",
+      "needs": [],
+      "produces": []
+    },
+    {
+      "batch": "check-metadata-batch",
+      "classification": "fast",
+      "consumes": [],
       "name": "check-hook-trees-not-io-exempt",
       "needs": [],
       "produces": []

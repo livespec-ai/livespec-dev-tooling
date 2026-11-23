@@ -46,14 +46,17 @@ and what each degrades to without a credential.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 __all__: list[str] = [
     "GATE_CONTEXT_ENV",
+    "GATE_PREVIEW_ENV",
     "GATE_REPOSITORY_ENV",
     "credential_skip_is_failure",
     "gate_repository",
     "in_gate_context",
+    "in_gate_preview",
+    "skip_unreadable_in_preview",
 ]
 
 # Set by the gate Job template (`ci-runner/k3s/phase2/gates/gate-job-template.yaml`)
@@ -72,6 +75,40 @@ def in_gate_context(*, env: Mapping[str, str]) -> bool:
     repository's severity-lever idiom (see `no_todo_registry`).
     """
     return bool(env.get(GATE_CONTEXT_ENV, ""))
+
+
+# Set by the factory's gate PREVIEW (the orchestrator's `_dispatcher_gate_preview_program`),
+# which runs a consumer's pre-commit hook inside the sandbox with `GATE_CONTEXT_ENV` also
+# set. The preview is feedback for the agent, never the gate that authorises a push, so a
+# member that cannot read its authorization there is skipped visibly rather than failed.
+GATE_PREVIEW_ENV = "LIVESPEC_GATE_PREVIEW"
+
+
+def in_gate_preview(*, env: Mapping[str, str]) -> bool:
+    """True when this run is a factory gate PREVIEW rather than a gate that authorises a push."""
+    return bool(env.get(GATE_PREVIEW_ENV, ""))
+
+
+def skip_unreadable_in_preview(
+    *, warn: Callable[..., None], member: str, env: Mapping[str, str]
+) -> bool:
+    """In a factory PREVIEW, print that `member` was SKIPPED-UNREADABLE and return True.
+
+    A preview is feedback for the agent, never the gate that authorises a push: the sandbox
+    token holds no admin scope, and the pushing host re-runs the member against the
+    committed tree. The skip is printed so a reviewer sees it was not a pass, and it names
+    the token VARIABLE that was refused, never its value. Returns False outside a preview,
+    leaving the caller's own disposition (fail closed in a real gate) untouched.
+    """
+    if not in_gate_preview(env=env):
+        return False
+    refused = [name for name in ("GH_TOKEN", "GITHUB_TOKEN") if env.get(name)]
+    warn(
+        f"SKIPPED-UNREADABLE {member}: the factory gate preview could not read what it "
+        "judges; the pushing host re-runs this member before a push",
+        credential=", ".join(refused) if refused else "no token variable set",
+    )
+    return True
 
 
 # Set beside `GATE_CONTEXT_ENV` by the same gate Job template, and read ONLY
@@ -133,5 +170,8 @@ def credential_skip_is_failure(*, env: Mapping[str, str]) -> bool:
     consequence at the call site instead of re-deriving it. Today the two
     coincide; keeping them separate means a future context that also demands the
     strict disposition does not have to be called a gate.
+
+    A factory gate PREVIEW also sets the gate context but authorises nothing, so it
+    reads as lenient: the pushing host re-runs the member against the committed tree.
     """
-    return in_gate_context(env=env)
+    return in_gate_context(env=env) and not in_gate_preview(env=env)

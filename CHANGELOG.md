@@ -58,6 +58,85 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.236.2](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.1...v1.236.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* **incident:** an expedited repair publishes a workflow path only under a maintainer-attested scope (livespec-dev-tooling-jtuxzn) ([e1169fa](https://github.com/livespec-ai/livespec-dev-tooling/commit/e1169fa5b069e8eada43393d972906cc65a23755))
+
+## [1.236.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.0...v1.236.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **ansible:** the reconcile_runs HOST_VARS.md names what the dev-host memory-bounds drop-in sets (livespec-dev-tooling-elejm2) ([fa10e82](https://github.com/livespec-ai/livespec-dev-tooling/commit/fa10e825db7b5fb3536f90606283d5791815cd6b))
+* **incident:** a chain the orchestrator retired reads as closed to the merge principal (livespec-dev-tooling-s7yiut) ([3607f7e](https://github.com/livespec-ai/livespec-dev-tooling/commit/3607f7edc20673c301622334b067c6a3e7356c5f))
+* **incident:** the merge principal records the master-run window and its deadline in the merged comment (livespec-dev-tooling-bm5bb5) ([ffbc2f9](https://github.com/livespec-ai/livespec-dev-tooling/commit/ffbc2f9cc01ec34ce22cddbacde00bc822b349fe))
+* **incident:** the observer bind finds the master push run itself when no run id is supplied (livespec-dev-tooling-bm5bb5) ([9813caa](https://github.com/livespec-ai/livespec-dev-tooling/commit/9813caa96e59b1da6b203322733e23b461292cfa))
+* **incident:** the post-merge bind looks the master push run up for a merge sha through the window rule (livespec-dev-tooling-bm5bb5) ([82761bf](https://github.com/livespec-ai/livespec-dev-tooling/commit/82761bf79bb7137912a79a488c55c8e1f253f926))
+
+## [1.236.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.235.1...v1.236.0) (2026-11-23)
+
+
+### Features
+
+* **incident-merge:** a committed, fenced route starts the merge runner for an armed green repair (livespec-dev-tooling-4r5rrv) ([f32f586](https://github.com/livespec-ai/livespec-dev-tooling/commit/f32f586da9e6f8470989dc49bd588736cfca4254))
+* **incident-observer:** an operator clears a retired chain's pre-merge arm (livespec-dev-tooling-s7yiut) ([6639e5d](https://github.com/livespec-ai/livespec-dev-tooling/commit/6639e5dc3cc31716c0a10cf7e360845e09f403b5))
+
+
+### Bug Fixes
+
+* a merge-async merge's master push run is judged pending until a thirty-minute window has passed, never absent early (livespec-dev-tooling-bm5bb5) ([d05b384](https://github.com/livespec-ai/livespec-dev-tooling/commit/d05b384a8160a87e97689cf3327942a09cfc36d3))
+* CI priority record omits closed or absent directly ranked items (livespec-dev-tooling-qpvoi2) ([6817237](https://github.com/livespec-ai/livespec-dev-tooling/commit/6817237f15f06cc2f562005adc371c74672473c8))
+* **ci-runner:** the master lanes lend their reserved churn slots so merge-queue work is not gated behind idle quota (R301) ([8169694](https://github.com/livespec-ai/livespec-dev-tooling/commit/8169694555099d3cdaf70c836f0a9751eb3b346a))
+
+## [1.235.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.235.0...v1.235.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **ansible:** the caam_delivery_push role installs the pinned caam binary (livespec-dev-tooling-gtx5nl) ([d0cf7db](https://github.com/livespec-ai/livespec-dev-tooling/commit/d0cf7db823f3761bc0080dc797c848daef83dee8))
+* **ci-runner:** apply-triggers.sh refuses xtrace, keeps the key out of argv, and skips a missing dataset instead of aborting the run (livespec-dev-tooling-a7rwrn) ([c21dd74](https://github.com/livespec-ai/livespec-dev-tooling/commit/c21dd74b405cf7103c4b90b4285f75c4681cda87))
+* mailbox read needs no sender seat ([fd8775a](https://github.com/livespec-ai/livespec-dev-tooling/commit/fd8775aae336e1eab8f3cf0df581bcd4bb870726))
+
+## [1.235.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.234.1...v1.235.0) (2026-11-22)
+
+
+### Features
+
+* **ansible:** the ci_converge_unit role runs the scale-sets-only converge on request through the normal apply (livespec-dev-tooling-jvgllz) ([989e609](https://github.com/livespec-ai/livespec-dev-tooling/commit/989e6097d2da79ff537513a68b3b5add8a73c627))
+* **checks:** check that the hook-template job PATH keeps every sandbox image's own PATH entries (livespec-dev-tooling-ftdz2q) ([4bbc820](https://github.com/livespec-ai/livespec-dev-tooling/commit/4bbc8208639d7ecc7a134e227197044590987e65))
+* the mailbox command sends and reads ledger messages once, and a refused or unusable ledger is never reported as delivered (livespec-dev-tooling-o767ny) ([1a35661](https://github.com/livespec-ai/livespec-dev-tooling/commit/1a356618f5d93c487c70d954339e100b9cc2af42))
+
+
+### Bug Fixes
+
+* a running pod of a succeeded run is reaped after a shorter bound (livespec-dev-tooling-3z72pg) ([351b710](https://github.com/livespec-ai/livespec-dev-tooling/commit/351b7100d0c9d957728fd1fb8293dde34f630005))
+* **ansible:** the Arq root snapshot excludes Dolt's backup-verification scratch (livespec-dev-tooling-gznrq2) ([fb14ea2](https://github.com/livespec-ai/livespec-dev-tooling/commit/fb14ea2e84c079d9fad8076c00ea71cd76749eeb))
+* **incident:** the incident-merge principal requests and accepts contents write, the grant the merge endpoints need (livespec-dev-tooling-pu52qw) ([7439c79](https://github.com/livespec-ai/livespec-dev-tooling/commit/7439c79b20420611a2351bdd104169903cc2abe3))
+* warn on checkbox flip in existing plan queue ([6ec3f96](https://github.com/livespec-ai/livespec-dev-tooling/commit/6ec3f960e998f2fb77e29ed64a9efc6475431e62))
+
+## [1.234.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.234.0...v1.234.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **checks:** a factory gate preview that cannot read branch protection is SKIPPED-UNREADABLE, not failed (livespec-dev-tooling-gkdh7v) ([54bf2c5](https://github.com/livespec-ai/livespec-dev-tooling/commit/54bf2c523fb632d7bba29ea119732c8d3cc46ca1))
+
+## [1.234.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.233.0...v1.234.0) (2026-11-22)
+
+
+### Features
+
+* **ci-runner:** a 15-minute trigger on the control-node role host applies merged CI-stack changes, holds credential ranges and reads drift back (livespec-dev-tooling-ctete5) ([ff3e42d](https://github.com/livespec-ai/livespec-dev-tooling/commit/ff3e42d29bdf820a2e5f2af7531ef1858a232248))
+
+
+### Bug Fixes
+
+* **homelab-worker:** the snapshot refusal names the archive-snapshot action that clears it (livespec-dev-tooling-ozmvjn) ([f05cd31](https://github.com/livespec-ai/livespec-dev-tooling/commit/f05cd31866ee587d420ad48feb41f765887cb96d))
+* the recovery authorization read counts only the always-bypass App, not the incident-merge pull_request actor (livespec-dev-tooling-42ogah) ([3d2e135](https://github.com/livespec-ai/livespec-dev-tooling/commit/3d2e1359b4afa7541cc5b3b9440e0f6f4866ec97))
+
 ## [1.233.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.232.0...v1.233.0) (2026-11-21)
 
 

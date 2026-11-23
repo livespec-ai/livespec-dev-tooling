@@ -23,7 +23,7 @@ nodes:
   poweredge-xubuntu:
     allocatable_memory_gib: 377.0
     gate_memory_gib: 40.0
-    repro_memory_gib: 8.0
+    repro_memory_gib: 16.0
     system_memory_gib: 1.10
   hp-xubuntu:
     allocatable_memory_gib: 27.2

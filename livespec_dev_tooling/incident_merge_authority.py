@@ -76,7 +76,7 @@ _CLOSED_STATUS = "closed"
 # The orchestrator's phase table (`_incident_phases.py`): the finished phases, the
 # recovery phases whose only merge is the recovery principal's inverse, and the
 # one phase in which an expedited repair PR is the attempt's own carrier.
-_CLOSED_PHASES = frozenset(("closed", "drill-closed"))
+_CLOSED_PHASES = frozenset(("closed", "drill-closed", "retired"))
 _INVERSE_PHASES = frozenset(("reverting", "rollback-conflict"))
 _REPAIR_PHASE = "repair"
 _PR_BOUND = "pr-bound"

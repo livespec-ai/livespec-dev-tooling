@@ -152,7 +152,7 @@ recipe is in the header of `ansible/claude-messaging.yml`.
   short nudge) or a ledger comment on the item or plan it owns. A seat stuck at
   an Enter-to-select dialog is cleared or alarmed by the out-of-band
   seat-dialog watchdog on each host. The replacement cross-machine channel is
-  designed in `plan/remote-control-retirement/research/002-ledger-mailbox-design.md`.
+  designed in `plan/archive/remote-control-retirement/research/002-ledger-mailbox-design.md`.
 
 If SendMessage cannot reach a session, typing into its pane is allowed. Check
 it is idle, keep it short, and say who you are.

@@ -94,6 +94,7 @@ template:
       # Routes this scale set's runner pods through Kueue's per-repo LocalQueue
       # rather than straight to the Kubernetes scheduler.
       kueue.x-k8s.io/queue-name: livespec-orchestrator-beads-fabro-lq
+      kueue.x-k8s.io/priority-class: ci-normal
   spec:
     # Placed by `ci-runner-scheduler` (../runner-scheduler/runner-scheduler.yaml),
     # like every scale set whose runner pods request a churn slot
@@ -276,4 +277,7 @@ minRunners: 0
 # 16 -> 14 on 2026-11-13: the ClusterQueue falls 8 -> 7 (per-node CPU budget,
 # cohort 30), max(2 x 7, 6) = 14, the bounded-multiple rule the fleet-capacity
 # scenario test enforces.
-maxRunners: 14
+# Recorded exception: the 2026-11-19 queue-wait measurement found this ceiling
+# binding while cohort slots were free. DERIVATION.md records its acceptance
+# check and the kill switch that restores the replaced 14-runner ceiling.
+maxRunners: 24

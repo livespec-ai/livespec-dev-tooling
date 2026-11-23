@@ -29,6 +29,16 @@ class CapabilityEvidence:
     cumulative_scope: str
     normal_factory_proof: str
     reason: str = ""
+    proving_repository: str = ""
+    proving_incident_item: str = ""
+    proving_release_build: str = ""
+
+    @property
+    def cites_proving_incident(self) -> bool:
+        """Whether this claim relies on another adopter's proving incident."""
+        return bool(
+            self.proving_repository or self.proving_incident_item or self.proving_release_build
+        )
 
 
 @dataclass(frozen=True, kw_only=True)

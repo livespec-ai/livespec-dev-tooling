@@ -24,7 +24,10 @@
     label: "{{ item.dest }}"
   register: ci_converge_unit_placement_copied
 
-- name: Helm-upgrade the runner scale sets only, after changed placement files
+- name: Helm-upgrade the runner scale sets only, after changed placement files or on request
+  # Runs after a changed placement file, or whenever ci_converge_unit_run_scale_sets
+  # is true (livespec-dev-tooling-jvgllz). The variable decides only WHETHER the
+  # step runs: the script's own inputs digest still skips an unchanged scale set.
   # Never under --check: there is no dry form of a helm upgrade. The script's
   # --scale-sets-only mode applies no manifest and publishes no ConfigMap.
   ansible.builtin.command:
@@ -37,5 +40,5 @@
   changed_when: true
   become: true
   when:
-    - ci_converge_unit_placement_copied.changed
+    - ci_converge_unit_placement_copied.changed or (ci_converge_unit_run_scale_sets | bool)
     - not ansible_check_mode

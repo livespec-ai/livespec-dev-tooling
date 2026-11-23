@@ -16,7 +16,7 @@ _INSTALLATION = "repos/owner/repo/installation"
 _TOKENS = "app/installations/9/access_tokens"
 _MERGE = "repos/owner/repo/pulls/7/merge-async"
 _GRANT = {
-    "contents": "read",
+    "contents": "write",
     "pull_requests": "write",
     "checks": "read",
     "statuses": "read",

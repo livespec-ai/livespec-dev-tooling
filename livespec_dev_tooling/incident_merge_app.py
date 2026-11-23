@@ -14,10 +14,12 @@ missing, malformed or mismatched credential is a NAMED refusal; nothing falls ba
 to another identity.
 
 Its installation token holds exactly what merging a verified pull request needs:
-`contents: read`, `pull_requests: write`, `checks: read`, `statuses: read` and
+`contents: write`, `pull_requests: write`, `checks: read`, `statuses: read` and
 GitHub's mandatory `metadata: read`. A token reporting any other grant, including
-`administration` or `workflows`, or a weaker one, is refused, so this principal can
-merge a pull request but can never push, move a ref or edit protection.
+`administration` or `workflows`, or a weaker one, is refused. Contents write is the
+permission GitHub lists for the merge endpoints (measured 2026-11-21: with contents
+read the merge answered HTTP 403), so it is the narrowest grant that can merge, and
+the grant never includes `administration`, so protection stays out of its reach.
 """
 
 from __future__ import annotations
@@ -60,7 +62,7 @@ __all__: list[str] = [
 MERGE_APP_ID_ENV = "LIVESPEC_INCIDENT_MERGE_APP_ID"
 MERGE_APP_KEY_ENV = "LIVESPEC_INCIDENT_MERGE_APP_PRIVATE_KEY"
 _MERGE_GRANT = {
-    "contents": "read",
+    "contents": "write",
     "pull_requests": "write",
     "checks": "read",
     "statuses": "read",

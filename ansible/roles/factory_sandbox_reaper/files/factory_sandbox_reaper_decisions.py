@@ -66,14 +66,37 @@ def _keep(*, sandbox: Sandbox, reason: str) -> Verdict:
     return Verdict(sandbox.sandbox_id, sandbox.run_id, "keep", reason)
 
 
+def _bound(
+    *, sandbox: Sandbox, run: Run, min_age: timedelta, running_min_age: timedelta | None
+) -> timedelta:
+    """The age a sandbox must reach: the running-pod bound only for a running succeeded run."""
+    if running_min_age is not None and sandbox.state == "running" and run.kind == "succeeded":
+        return running_min_age
+    return min_age
+
+
+def _failed_running_inside_horizon(
+    *, sandbox: Sandbox, run: Run, now: datetime, ended: datetime, min_age: timedelta
+) -> bool:
+    """True when the running-pod bound would have applied to this sandbox but for its failure."""
+    return sandbox.state == "running" and run.kind == "failed" and now - ended < min_age
+
+
 def classify(
     *,
     sandboxes: Sequence[Sandbox],
     runs: Mapping[str, Run],
     now: datetime,
     min_age: timedelta,
+    running_min_age: timedelta | None = None,
 ) -> tuple[list[Verdict], list[tuple[Sandbox, Run, datetime]]]:
-    """Split sandboxes into immediate keeps and candidates still owing the origin check."""
+    """Split sandboxes into immediate keeps and candidates still owing the origin check.
+
+    `running_min_age` is the shorter bound for a RUNNING sandbox of a SUCCEEDED
+    run (R301): such a pod serves nobody and holds a budget slot. Stopped
+    sandboxes and every failed run keep `min_age`; a failed run's running pod
+    inside `min_age` is skipped with a reason naming the guard.
+    """
     keeps: list[Verdict] = []
     candidates: list[tuple[Sandbox, Run, datetime]] = []
     for sandbox in sandboxes:
@@ -94,13 +117,19 @@ def classify(
             keeps.append(_keep(sandbox=sandbox, reason=reason))
         elif ended is None:
             keeps.append(_keep(sandbox=sandbox, reason="run end time unknown, kept"))
-        elif now - ended < min_age:
+        elif now - ended < _bound(
+            sandbox=sandbox, run=run, min_age=min_age, running_min_age=running_min_age
+        ):
             hours = (now - ended).total_seconds() / 3600
-            keeps.append(
-                _keep(
-                    sandbox=sandbox, reason=f"run ended {hours:.1f} h ago, younger than the horizon"
+            reason = f"run ended {hours:.1f} h ago, younger than the horizon"
+            if _failed_running_inside_horizon(
+                sandbox=sandbox, run=run, now=now, ended=ended, min_age=min_age
+            ):
+                reason = (
+                    f"failed run ended {hours:.1f} h ago: the running-pod bound applies to "
+                    "succeeded runs only, an unpreserved failed tree is not reaped on it, kept"
                 )
-            )
+            keeps.append(_keep(sandbox=sandbox, reason=reason))
         else:
             candidates.append((sandbox, run, ended))
     return keeps, candidates

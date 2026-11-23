@@ -323,20 +323,28 @@ def main() -> int:
         omit_patterns=cov.config.run_omit or [],
     )
 
-    offenders: list[tuple[str, dict[str, object]]] = []
+    offenders: list[tuple[str, dict[str, object], dict[str, object]]] = []
     for fname, file_info in sorted(report["files"].items()):
         summary = file_info["summary"]
         line_pct = summary.get("percent_covered", _FULL_COVERAGE_PCT)
         if line_pct < _FULL_COVERAGE_PCT:
-            offenders.append((fname, summary))
+            offenders.append((fname, file_info, summary))
 
     if offenders:
-        for fname, summary in offenders:
+        for fname, file_info, summary in offenders:
             log.error(
                 "file below 100% coverage",
                 file=fname,
                 line_percent=summary.get("percent_covered"),
-                missing_lines=summary.get("missing_lines"),
+                missing_lines=file_info.get("missing_lines", []),
+                missing_branches=summary.get("missing_branches", 0),
+                partial_branches=summary.get("num_partial_branches", 0),
+            )
+        total_percent = report["totals"].get("percent_covered")
+        if isinstance(total_percent, int | float) and f"{total_percent:.2f}" == "100.00":
+            log.error(
+                "rounded total coverage is not the pass criterion",
+                rounded_total_percent=f"{total_percent:.2f}",
             )
         return 1
     return 1 if unmeasured_fails else 0

@@ -17,7 +17,11 @@
 #      (so the fleet, candidate and mi-homelab instances all count), excluding the
 #      driver's cleanup pods (label sandbox-driver-kubernetes/cleanup-of) and pods
 #      that have ended (phase Succeeded or Failed). A terminating pod still counts:
-#      it still holds its CPU.
+#      it still holds its CPU. A pod STUCK in ContainerCreating (phase Pending, bound
+#      to a node, no container started, older than FACTORY_BUDGET_STUCK_SECONDS) is
+#      NOT counted: it holds no CPU and may never start (a FailedMount pod sat 46 h
+#      on poweredge-xubuntu holding one of its 9 slots, livespec-dev-tooling-tg4brp).
+#      The cycle logs a STUCK line naming each excluded pod.
 #   3. Sets the node label ci-runner.io/factory-admit=true on every factory node
 #      whose count is below its budget, and false on the rest. The sandbox driver's
 #      node selector includes that label, so a NEW sandbox is placed only on an
@@ -59,12 +63,18 @@ esac
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 export FACTORY_BUDGET_FILE="${FACTORY_BUDGET_FILE:-/etc/livespec/factory-pod-budgets.conf}"
 export FACTORY_BUDGET_GATE="${FACTORY_BUDGET_GATE:-on}"
+# The bound is the sandbox driver's own start timeout (600 s): a pod still in
+# ContainerCreating after that has already failed its sandbox start.
+export FACTORY_BUDGET_STUCK_SECONDS="${FACTORY_BUDGET_STUCK_SECONDS:-600}"
 export WORKER_LANE_READINESS_HELPER="${WORKER_LANE_READINESS_HELPER:-/usr/local/lib/ci-runner-k3s/kueue/worker-lane-readiness.py}"
 ADMIT_LABEL=ci-runner.io/factory-admit
 
 case "$FACTORY_BUDGET_GATE" in
   on|off) ;;
   *) die "FACTORY_BUDGET_GATE must be on or off, not '${FACTORY_BUDGET_GATE}'; changing nothing" ;;
+esac
+case "$FACTORY_BUDGET_STUCK_SECONDS" in
+  ''|*[!0-9]*) die "FACTORY_BUDGET_STUCK_SECONDS must be whole seconds, not '${FACTORY_BUDGET_STUCK_SECONDS}'; changing nothing" ;;
 esac
 if [ "$FACTORY_BUDGET_GATE" = on ]; then
   [ -r "$FACTORY_BUDGET_FILE" ] \
@@ -84,7 +94,7 @@ kubectl get pods --all-namespaces -l app.kubernetes.io/managed-by=sandbox-driver
   || die "worker lane readiness helper is not executable: $WORKER_LANE_READINESS_HELPER; changing nothing this cycle"
 
 python3 - "$work" >"$work/decision" <<'PY'
-import json, os, subprocess, sys
+import datetime, json, os, subprocess, sys
 
 work = sys.argv[1]
 gate = os.environ["FACTORY_BUDGET_GATE"]
@@ -139,6 +149,35 @@ ready_workers = {
     for line in classified.stdout.splitlines()
     if (fields := line.split("\t")) and fields[0] == "ready" and len(fields) == 5
 }
+STUCK_AFTER = int(os.environ["FACTORY_BUDGET_STUCK_SECONDS"])
+NOW = datetime.datetime.now(datetime.timezone.utc)
+
+
+def stuck_in_container_creating(pod):
+    """Pending, bound, no container started, and older than the bound."""
+    status = pod.get("status") or {}
+    if status.get("phase") != "Pending":
+        return False
+    created = (pod.get("metadata") or {}).get("creationTimestamp")
+    if not created:
+        return False
+    started = [
+        c for c in (status.get("containerStatuses") or []) if "waiting" not in (c.get("state") or {})
+    ]
+    if started:
+        return False
+    waiting = [
+        ((c.get("state") or {}).get("waiting") or {}).get("reason")
+        for c in (status.get("containerStatuses") or [])
+    ]
+    if waiting and any(reason != "ContainerCreating" for reason in waiting):
+        return False
+    age = NOW - datetime.datetime.strptime(created, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=datetime.timezone.utc
+    )
+    return age.total_seconds() > STUCK_AFTER
+
+
 counts = {n["metadata"]["name"]: 0 for n in nodes}
 for pod in load("pods.json")["items"]:
     labels = pod["metadata"].get("labels") or {}
@@ -148,6 +187,11 @@ for pod in load("pods.json")["items"]:
         continue
     node = (pod.get("spec") or {}).get("nodeName")
     if node in counts:
+        if stuck_in_container_creating(pod):
+            meta = pod["metadata"]
+            print("STUCK pod=%s/%s node=%s in ContainerCreating over %ds, not counted"
+                  % (meta.get("namespace", ""), meta["name"], node, STUCK_AFTER))
+            continue
         counts[node] += 1
 
 rows = []

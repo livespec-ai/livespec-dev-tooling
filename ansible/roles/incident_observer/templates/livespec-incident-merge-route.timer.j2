@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# Runs the incident-merge route periodically. Installed by livespec-dev-tooling
+# ansible/roles/incident_observer; never hand-edit.
+[Unit]
+Description=Start the incident-merge runner for an armed, green expedited repair periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ incident_observer_merge_route_interval }}
+RandomizedDelaySec=5
+
+[Install]
+WantedBy=timers.target

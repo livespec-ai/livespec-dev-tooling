@@ -1498,12 +1498,12 @@ holds each ceiling to the rule or to its row here, and
 The first exception, `livespec-orchestrator-beads-fabro` at 12 (2026-10-19),
 was deleted on 2026-10-22, when the rule itself exceeded it.
 
-| Repository | `nominalQuota` | Rule value | `maxRunners` | Recorded |
-|---|---|---|---|---|
-| `fabro` | 1 | 6 | **2** | 2026-11-05 |
-| `livespec-orchestrator-master` | 1 | 6 | **4** | 2026-11-12 |
-| `livespec-dev-tooling` | 7 | 14 | **20** | 2026-11-20 |
-| `livespec-orchestrator-beads-fabro` | 6 | 12 | **14** | 2026-11-18 |
+| Repository | `nominalQuota` | Rule value | `maxRunners` | Recorded | Acceptance check | Kill switch |
+|---|---|---|---|---|---|---|
+| `fabro` | 1 | 6 | **2** | 2026-11-05 | First cold run stays within its storage and Slow SQL limits | Restore the rule value 6 |
+| `livespec-orchestrator-master` | 1 | 6 | **4** | 2026-11-12 | After converge, its listener and GitHub label are present | Restore the rule value 6 |
+| `livespec-dev-tooling` | 7 | 14 | **20** | 2026-11-20 | Within 24 h, it borrows while small queues are idle and pending stays bounded | Restore the rule value 14 |
+| `livespec-orchestrator-beads-fabro` | 6 | 12 | **24** | 2026-11-18 | In 24 h, fewer than 10 ceiling/free-slot minutes and no added kine Slow SQL | Restore maxRunners 14 |
 
 **`fabro`, 6 to 2 (2026-11-05).** The rule's 2x multiple is kept and its floor
 of 6 is waived. The floor protects a small-quota repository with a 13–21-job
@@ -1542,6 +1542,26 @@ empty. The measurement is in "Small-queue floor of 2: cohort 30 re-split
 queue's admitted count exceeds its new quota in the hours when the small queues
 are idle, and Kueue's pending count stays bounded by maxRunners. If neither
 queue ever borrows past its rule value, drop the row and take the rule value.
+
+**`livespec-orchestrator-beads-fabro`, 14 to 24 (2026-11-19).** The 24-hour
+read of GitHub job records found 1,801 k3s jobs from the 260 most recent runs:
+200 jobs waited over two minutes with minutes at the 14-runner ceiling, for
+605 job-minutes at that ceiling. The scale set's ClusterQueue remains at its
+committed dispatch-time nominalQuota, which is recorded in the table above;
+this exception changes neither that queue nor the cohort allocation.
+
+**Order.** Merge this change; the next `converge-ci-stack` run carries it,
+because every converge applies all of master and there is no separate apply.
+The acceptance window begins at that converge, and the converge record names
+the run that starts it.
+
+**Acceptance check.** Over the 24 hours after that converge, minutes at the
+24-runner ceiling while three or more cohort slots are free fall below 10, and
+kine Slow SQL per hour does not exceed its pre-apply baseline. Otherwise,
+revert to 14.
+
+**Kill switch.** Restore `maxRunners: 14` in this scale set and let the next
+converge carry it.
 
 ## The gates quota on gmktec-xubuntu and hp-xubuntu (2026-11-03)
 
@@ -2920,3 +2940,40 @@ does not advertise.
 **The +2 hour read list.** gmktec churn-slot fill; gmktec `mpstat` idle; BestEffort `cpu.pressure` avg60; gmktec memory use;
 factory pod count on gmktec; Pending runners (and their age); poweredge idle and PSI avg60; queue wait per queue
 (`ci.job.queue_ms`); median job minutes per node.
+
+
+## Master lanes lend their reserved slots (2026-11-22, R301)
+
+**Why.** legacy-coordinator-agent ruled R301 on 2026-11-22 ~22:5xZ, under the maintainer's "do whatever you need to
+unblock it", while the livespec-orchestrator-beads-fabro merge queue had merged nothing since 18:06Z and plan
+expedited-incident-response-flag (livespec-dev-tooling-bqnzcm) had a 2026-11-23T21:22Z deadline. The reading at
+~22:10Z: the cohort's churn-slot-flavor nominal was 31, equal to node capacity (poweredge 22, gamingpc 6, hp 2,
+gmktec 1). 4 of those slots were the two master lanes' floors at `lendingLimit: 0` (dev-tooling-master 3,
+orchestrator-master 1), so 27 were lendable and all 27 were in use. Kueue refused the pending runner workloads with
+"insufficient unused quota for ci-runner.io/churn-slot in flavor churn-slot-flavor, 1 more needed". The pending counts
+were orchestrator-cq 11, dev-tooling-cq 8 and overseer-cq 4, with 22 runner pods gated. gamingpc had 4 free physical
+slots and read `cpu.idle60=81.6`. Neither master lane had an admitted workload. merge_group jobs route through
+`CI_RUNNER_LABELS` (the pull-request lane); only a `push` reads `CI_RUNNER_LABELS_MASTER`. So while nothing merges,
+the master lanes have no work, and the slots they reserve can do nothing for the merge queue.
+
+**The change.** Remove `lendingLimit` from both master ClusterQueues, on the churn-slot flavor and on the memory
+flavor. Every cohort member now lends its whole unused floor. Nominal quotas are unchanged, so the cohort still sums
+to 31, the node capacity. Every preemption setting stays `Never` on every queue.
+
+**Priority without eviction.** R301 asked for master priority on reclaim, through preemption or
+`borrowWithinCohort`, whichever the config supports cleanly. Neither does it cleanly. A master queue with
+`reclaimWithinCohort: Any` or `LowerPriority`, or with a `borrowWithinCohort` policy other than Never, evicts a
+running borrower. That borrower is usually a pull-request or merge_group runner mid-job, and evicting it fails its
+merge group. The standing maintainer directive "NEVER EVICT A HEALTHY RUNNING JOB" (above) forbids exactly this.
+What remains is Kueue's own admission order: when a slot frees anywhere in the cohort, a workload that fits inside
+its own queue's nominal quota is admitted ahead of workloads that would borrow (Kueue scheduler entry ordering:
+non-borrowing first, then priority, then creation time). A master push therefore waits at most until the first
+running job in the cohort finishes, not for the job that borrowed "its" slot. With about 27 jobs running, that is a
+wait of minutes. That is the price of the lend, accepted by R301.
+
+**Revert.** Restore `lendingLimit: 0` on both flavors of both master queues, plus the two tests, which are
+`test_master_push_slices_lend_their_floor_and_never_preempt` (formerly
+`test_master_push_slice_reserves_its_quota_and_lends_none_of_it`) and the `lendingLimit` line in
+`test_orchestrator_master_push_has_a_dedicated_converged_lane`. Apply through the same `ci_converge_unit` route.
+Revert if master pushes wait more than about 10 minutes for admission once merges resume, or when the coordinator
+ends the incident. The live objects before this change are backed up in the incident report.

@@ -517,6 +517,42 @@
     and incident_observer_installation_name is not defined
   notify: Reload systemd for the incident observer units
 
+- name: Create the incident-merge route's root-owned marker directory
+  ansible.builtin.file:
+    path: "{{ incident_observer_merge_route_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+  when: >-
+    not (incident_observer_scratch | bool)
+    and incident_observer_scratch_name is not defined
+    and incident_observer_target_branch | default('', true) | length == 0
+    and incident_observer_installation_name is not defined
+
+- name: Install the incident-merge route service and timer
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  loop:
+    - src: livespec-incident-merge-route.service.j2
+      dest: "{{ incident_observer_merge_route_service_path }}"
+    - src: livespec-incident-merge-route.timer.j2
+      dest: "{{ incident_observer_merge_route_timer_path }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  when: >-
+    not (incident_observer_scratch | bool)
+    and incident_observer_scratch_name is not defined
+    and incident_observer_target_branch | default('', true) | length == 0
+    and incident_observer_installation_name is not defined
+  notify: Reload systemd for the incident observer units
+
 - name: Write each secret from the control node's projected environment
   # The exact bytes, no trailing newline: the service compares
   # `Bearer <bytes>` against the file's contents.
@@ -1005,6 +1041,19 @@
     state: started
   become: true
   when: not ansible_check_mode or incident_observer_unit_stat.stat.exists
+
+- name: Keep the incident-merge route timer enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ incident_observer_merge_route_unit_name }}.timer"
+    enabled: true
+    state: started
+  become: true
+  when: >-
+    (not ansible_check_mode or incident_observer_unit_stat.stat.exists)
+    and not (incident_observer_scratch | bool)
+    and incident_observer_scratch_name is not defined
+    and incident_observer_target_branch | default('', true) | length == 0
+    and incident_observer_installation_name is not defined
 
 - name: Keep the observer enabled and running
   ansible.builtin.systemd_service:

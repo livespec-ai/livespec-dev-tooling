@@ -69,40 +69,7 @@ _WORKER_QUOTA_TEMPLATE = "@WORKER_CHURN_SLOTS@"
 _CEILING_MULTIPLE = 2
 _CEILING_FLOOR = 6
 
-# The recorded exceptions to that bound, keyed by ClusterQueue. Each one is a row
-# in DERIVATION.md "Recorded exceptions to the rule", carrying the measurement
-# that justifies it and the acceptance check that confirms or reverts it. A
-# ceiling matches its row here or the bound above, never anything else.
-_RECORDED_CEILING_EXCEPTIONS: dict[str, int] = {
-    # The rule's 2x multiple with its floor of 6 waived: a ~100 GiB work volume
-    # per job (DERIVATION.md "The fabro fork scale set (2026-11-05)").
-    "fabro-cq": 2,
-    # The dedicated master-push lane caps at the measured four coverage shards,
-    # rather than the ordinary six-runner floor.
-    "livespec-orchestrator-master-cq": 4,
-    # The two largest queues keep the ceilings their former quotas derived, so
-    # the 2026-11-14 small-queue floor cuts their guarantee, not their burst
-    # (DERIVATION.md "Small-queue floor of 2: cohort 30 re-split (2026-11-14)").
-    "livespec-dev-tooling-cq": 20,
-    "livespec-orchestrator-beads-fabro-cq": 14,
-}
-
-# Each exception's row in DERIVATION.md "Recorded exceptions to the rule":
-# `| `<repository>` | <nominalQuota> | <rule value> | **<maxRunners>** | <date> |`.
-_EXCEPTION_ROW = re.compile(
-    (
-        r"^\| `(?P<repo>[^`]+)` \| (?P<quota>\d+) \| (?P<rule>\d+) \| "
-        r"\*\*(?P<max>\d+)\*\* \| \d{4}-\d{2}-\d{2} \|"
-    ),
-    re.MULTILINE,
-)
 _EXCEPTIONS_HEADING = "### Recorded exceptions to the rule"
-_EXCEPTION_QUEUES = {
-    "fabro": "fabro-cq",
-    "livespec-orchestrator-master": "livespec-orchestrator-master-cq",
-    "livespec-dev-tooling": "livespec-dev-tooling-cq",
-    "livespec-orchestrator-beads-fabro": "livespec-orchestrator-beads-fabro-cq",
-}
 
 # The physical invariant, stated in the section itself.
 _PHYSICAL_CAP = 482
@@ -240,6 +207,55 @@ def _scale_set_ceilings() -> dict[str, tuple[str, int]]:
     return ceilings
 
 
+def _recorded_exception_ceilings() -> dict[str, tuple[int, int, int]]:
+    """Read exception rows from DERIVATION.md, keyed by their ClusterQueue.
+
+    The table is the source of truth for every departure from the bounded
+    multiple; values files establish the row's repository-to-queue routing.
+    """
+    section = _DERIVATION.read_text(encoding="utf-8").split(_EXCEPTIONS_HEADING, 1)[1]
+    lines = section.splitlines()
+    table_start = next(index for index, line in enumerate(lines) if line.startswith("|"))
+    table = []
+    for line in lines[table_start:]:
+        if not line.startswith("|"):
+            break
+        table.append(line)
+    headers = [cell.strip().strip("`") for cell in table[0].strip("|").split("|")]
+    required = {"Repository", "nominalQuota", "Rule value", "maxRunners"}
+    assert required <= set(headers), f"recorded-exceptions table needs {sorted(required)}"
+    rows = [
+        dict(
+            zip(
+                headers,
+                (cell.strip().strip("`") for cell in line.strip("|").split("|")),
+                strict=False,
+            )
+        )
+        for line in table[2:]
+    ]
+
+    targets = _local_queue_targets()
+    exceptions: dict[str, tuple[int, int, int]] = {}
+    for row in rows:
+        repository = row["Repository"]
+        values_path = _ARC_DIR / f"values-{repository}.yaml"
+        source = values_path.read_text(encoding="utf-8")
+        queue = _QUEUE_NAME.search(source)
+        assert queue is not None, f"{values_path.name} must route through a LocalQueue"
+        cluster_queue = targets.get(queue.group("lq"), queue.group("lq"))
+        assert cluster_queue not in exceptions, (
+            f"each ClusterQueue may have one recorded ceiling exception; "
+            f"clusterQueue={cluster_queue}"
+        )
+        exceptions[cluster_queue] = (
+            int(row["nominalQuota"]),
+            int(row["Rule value"]),
+            int(row["maxRunners"].strip("*")),
+        )
+    return exceptions
+
+
 def test_every_repository_ceiling_is_the_bounded_multiple_of_its_fair_share() -> None:
     """`maxRunners == max(2 x nominalQuota, 6)`, or its recorded exception, in both directions."""
     quotas = _cohort_quotas()
@@ -254,8 +270,9 @@ def test_every_repository_ceiling_is_the_bounded_multiple_of_its_fair_share() ->
         f"a quota with no scale set routed to it is capacity reserved for nobody; "
         f"unrouted={unrouted}"
     )
+    exceptions = _recorded_exception_ceilings()
     expected = {
-        cq: _RECORDED_CEILING_EXCEPTIONS.get(cq, max(_CEILING_MULTIPLE * quota, _CEILING_FLOOR))
+        cq: exceptions.get(cq, (0, 0, max(_CEILING_MULTIPLE * quota, _CEILING_FLOOR)))[2]
         for cq, quota in quotas.items()
     }
     wrong = sorted(
@@ -436,12 +453,16 @@ def test_measured_job_hours_derive_the_committed_fair_shares() -> None:
     assert "## gamingpc 4: cohort 32 (2026-11-18)" in derivation
 
 
-def test_master_push_slice_reserves_its_quota_and_lends_none_of_it() -> None:
-    """The master slice's floor is reserved: `lendingLimit: 0`, no preemption.
+def test_master_push_slices_lend_their_floor_and_never_preempt() -> None:
+    """Every cohort member lends its whole floor, the master slices included.
 
-    Reclaim is Never across the cohort, so a lent master slot would only come
-    back when the pull-request job borrowing it finished — the wait the slice
-    exists to remove. Every OTHER member must keep lending its whole floor.
+    R301 (legacy-coordinator-agent, 2026-11-22, DERIVATION.md "Master lanes lend
+    their reserved slots (2026-11-22, R301)"): the 2026-11-03 `lendingLimit: 0`
+    reservation idled 4 of 31 slots while pull-request and merge-queue work sat
+    gated. The master slices keep their floor and keep every preemption setting
+    at Never (the standing NEVER EVICT A HEALTHY RUNNING JOB directive); a master
+    workload inside its own nominal is admitted ahead of borrowers on the next
+    freed slot, without evicting anything.
     """
     lending = {
         document_name.group("name"): limit.group("limit")
@@ -450,7 +471,7 @@ def test_master_push_slice_reserves_its_quota_and_lends_none_of_it() -> None:
         and (limit := _LENDING_LIMIT.search(document)) is not None
     }
     masters = {"livespec-dev-tooling-master-cq", "livespec-orchestrator-master-cq"}
-    assert lending == {name: "0" for name in masters}
+    assert lending == {}
     for name in masters:
         master = next(
             document
@@ -459,24 +480,6 @@ def test_master_push_slice_reserves_its_quota_and_lends_none_of_it() -> None:
         )
         for setting in ("reclaimWithinCohort: Never", "policy: Never", "withinClusterQueue: Never"):
             assert setting in master
-
-
-def test_rederived_orchestrator_ceiling_removes_its_recorded_exception() -> None:
-    """The former 12-runner exception is gone; the orchestrator's ceiling stays above it."""
-    orchestrator = "livespec-orchestrator-beads-fabro-cq"
-    quota = _cohort_quotas()[orchestrator]
-    rule_value = max(_CEILING_MULTIPLE * quota, _CEILING_FLOOR)
-    ceiling = _RECORDED_CEILING_EXCEPTIONS.get(orchestrator, rule_value)
-    derivation = _DERIVATION.read_text(encoding="utf-8")
-
-    # The 2026-10-19 exception capped the orchestrator at 12. Its 2026-11-14
-    # exception keeps the burst its former quota of 7 derived, which is above 12.
-    assert ceiling != 12
-    assert ceiling >= 12
-    assert (
-        "The Recorded exceptions to the rule table remains absent because 52 is not below 12."
-        in " ".join(derivation.split())
-    )
 
 
 def test_every_recorded_exception_is_a_derivation_row_that_still_permits_borrowing() -> None:
@@ -488,26 +491,12 @@ def test_every_recorded_exception_is_a_derivation_row_that_still_permits_borrowi
     section requires the ceiling to be "large enough that a repository can
     borrow unused capacity beyond its guaranteed share".
     """
-    derivation = _DERIVATION.read_text(encoding="utf-8")
-    assert _EXCEPTIONS_HEADING in derivation
-    # Only the exceptions subsection: other tables in the file share the shape.
-    section = derivation.split(_EXCEPTIONS_HEADING, 1)[1].split("\n#", 1)[0]
-    rows = {
-        _EXCEPTION_QUEUES.get(row.group("repo"), row.group("repo")): row
-        for row in _EXCEPTION_ROW.finditer(section)
-    }
-    assert set(rows) == set(_RECORDED_CEILING_EXCEPTIONS), (
-        f"every recorded exception needs exactly one DERIVATION.md row and no row may "
-        f"outlive its exception; rows={sorted(rows)} "
-        f"exceptions={sorted(_RECORDED_CEILING_EXCEPTIONS)}"
-    )
     quotas = _cohort_quotas()
     ceilings = _scale_set_ceilings()
-    for cq, ceiling in _RECORDED_CEILING_EXCEPTIONS.items():
-        row = rows[cq]
-        assert int(row.group("quota")) == quotas[cq], (cq, row.group(0))
-        assert int(row.group("rule")) == max(_CEILING_MULTIPLE * quotas[cq], _CEILING_FLOOR)
-        assert int(row.group("max")) == ceiling == ceilings[cq][1], (cq, row.group(0))
+    for cq, (recorded_quota, rule_value, ceiling) in _recorded_exception_ceilings().items():
+        assert recorded_quota == quotas[cq], (cq, recorded_quota, quotas[cq])
+        assert rule_value == max(_CEILING_MULTIPLE * quotas[cq], _CEILING_FLOOR)
+        assert ceiling == ceilings[cq][1], (cq, ceiling, ceilings[cq])
         assert ceiling > quotas[cq], (
             f"{cq}: an exception may waive the rule but not the borrowing clause; "
             f"maxRunners={ceiling} nominalQuota={quotas[cq]}"

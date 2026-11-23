@@ -1,4 +1,4 @@
-work_item=livespec-dev-tooling-m4mm6g
-reason=Wires the existing incident CI inventory freshness read into the release path (a gate step on the scheduled and dispatched release-please pass) and a daily scheduled workflow whose failure the shared release-lane watcher reports through the durable release-lane-red issue. Two new workflow files and one inserted step; no existing line is deleted or modified, and the step measures under 10 s cold.
+work_item=livespec-dev-tooling-ftdz2q
+reason=Adds the CI mirror leg for the new canonical check-hook-template-sandbox-image-path (one inserted line in the existing aggregate step list, beside its alphabetical neighbours) so check-ci-matrix-completeness passes. No existing line is deleted or modified; the check reads committed Dockerfiles and one YAML, well under 10 s. actionlint output on the file is identical to master (8 pre-existing shellcheck notes, none new).
 change=additive
 ci_runtime=no-significant-increase

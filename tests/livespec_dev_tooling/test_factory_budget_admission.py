@@ -18,6 +18,7 @@ import json
 import os
 import stat
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -90,17 +91,26 @@ def _node(
 
 
 def _sandbox(
-    name: str, *, node: str | None, phase: str = "Running", cleanup: bool = False
+    name: str,
+    *,
+    node: str | None,
+    phase: str = "Running",
+    cleanup: bool = False,
+    age_seconds: int | None = None,
+    waiting: str | None = None,
 ) -> _Json:
     labels = {"app.kubernetes.io/managed-by": "sandbox-driver-kubernetes"}
     if cleanup:
         labels["sandbox-driver-kubernetes/cleanup-of"] = name
     spec: _Json = {"nodeName": node} if node is not None else {}
-    return {
-        "metadata": {"name": name, "namespace": "factory", "labels": labels},
-        "spec": spec,
-        "status": {"phase": phase},
-    }
+    metadata: _Json = {"name": name, "namespace": "factory", "labels": labels}
+    if age_seconds is not None:
+        created = datetime.now(timezone.utc) - timedelta(seconds=age_seconds)
+        metadata["creationTimestamp"] = created.strftime("%Y-%m-%dT%H:%M:%SZ")
+    status: _Json = {"phase": phase}
+    if waiting is not None:
+        status["containerStatuses"] = [{"state": {"waiting": {"reason": waiting}}}]
+    return {"metadata": metadata, "spec": spec, "status": status}
 
 
 def _run(
@@ -180,6 +190,49 @@ def test_a_bound_pending_pod_counts_because_it_will_hold_cpu(tmp_path: Path) -> 
     pods = [_sandbox(f"g{i}", node=_GMK) for i in range(5)] + [
         _sandbox("starting", node=_GMK, phase="Pending")
     ]
+    run, _ = _run(tmp_path, nodes=[_node(_GMK), _node(_PE)], pods=pods, budgets=_BUDGETS)
+    assert f"ADMIT node={_GMK} count=6 budget=6 admit=false" in run.stdout
+
+
+def test_a_pod_stuck_in_container_creating_past_the_bound_is_not_counted(tmp_path: Path) -> None:
+    pods = [_sandbox(f"g{i}", node=_GMK) for i in range(5)] + [
+        _sandbox("stuck", node=_GMK, phase="Pending", waiting="ContainerCreating", age_seconds=7200)
+    ]
+    run, labels = _run(tmp_path, nodes=[_node(_GMK), _node(_PE)], pods=pods, budgets=_BUDGETS)
+    assert run.returncode == 0, run.stderr
+    assert f"ADMIT node={_GMK} count=5 budget=6 admit=true" in run.stdout
+    assert "STUCK pod=factory/stuck" in run.stdout
+    assert _label(_GMK, "true") in labels
+
+
+def test_a_node_held_full_only_by_a_stuck_pod_reads_admitted_on_the_next_cycle(
+    tmp_path: Path,
+) -> None:
+    pods = [_sandbox(f"p{i}", node=_PE) for i in range(11)] + [
+        _sandbox("stuck", node=_PE, phase="Pending", waiting="ContainerCreating", age_seconds=99999)
+    ]
+    run, labels = _run(
+        tmp_path,
+        nodes=[_node(_GMK, admit="false"), _node(_PE, admit="false")],
+        pods=pods,
+        budgets=_BUDGETS,
+    )
+    assert run.returncode == 0, run.stderr
+    assert f"ADMIT node={_PE} count=11 budget=12 admit=true was=false" in run.stdout
+    assert _label(_PE, "true") in labels
+
+
+def test_a_container_creating_pod_within_the_bound_still_counts(tmp_path: Path) -> None:
+    pods = [_sandbox(f"g{i}", node=_GMK) for i in range(5)] + [
+        _sandbox("young", node=_GMK, phase="Pending", waiting="ContainerCreating", age_seconds=30)
+    ]
+    run, _ = _run(tmp_path, nodes=[_node(_GMK), _node(_PE)], pods=pods, budgets=_BUDGETS)
+    assert f"ADMIT node={_GMK} count=6 budget=6 admit=false" in run.stdout
+    assert "STUCK" not in run.stdout
+
+
+def test_an_old_running_pod_is_never_treated_as_stuck(tmp_path: Path) -> None:
+    pods = [_sandbox(f"g{i}", node=_GMK, age_seconds=999999) for i in range(6)]
     run, _ = _run(tmp_path, nodes=[_node(_GMK), _node(_PE)], pods=pods, budgets=_BUDGETS)
     assert f"ADMIT node={_GMK} count=6 budget=6 admit=false" in run.stdout
 

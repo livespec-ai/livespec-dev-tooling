@@ -30,3 +30,16 @@
     daemon_reload: true
   become: true
   when: not ansible_check_mode or dev_host_retention_timer_unit.stat.exists
+
+- name: Restart the dev host scratch-only retention timer
+  # Like the daily timer, a held scratch timer must not be restarted: its
+  # Persistent setting would otherwise immediately run a cleanup the hold
+  # deliberately stopped.
+  ansible.builtin.systemd_service:
+    name: "{{ dev_host_retention_scratch_timer }}"
+    state: restarted
+    daemon_reload: true
+  become: true
+  when:
+    - dev_host_retention_timer_enabled
+    - not ansible_check_mode or dev_host_retention_scratch_timer_unit.stat.exists

@@ -11,3 +11,5 @@ ExecStart={{ arq_root_snapshot_bin }}
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+# Space-separated; the runner excludes each path and lists it in the manifest.
+Environment="ARQ_SNAPSHOT_EXTRA_EXCLUDES={{ arq_root_snapshot_extra_excluded_paths | join(' ') }}"

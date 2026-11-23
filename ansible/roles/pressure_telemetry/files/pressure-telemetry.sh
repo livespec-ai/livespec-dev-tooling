@@ -6,6 +6,9 @@
 # HONEYCOMB_INGEST_KEY_LIVESPEC through the otel_collector role, whereas adding
 # a receiver to the separately owned collector repository would make this
 # emitter depend on a second repository's deploy cycle.
+# Refuse xtrace: it would print the Honeycomb key this script expands.
+case $- in *x*) echo 'pressure-telemetry: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2;; esac
+[[ "${SHELLOPTS:-}" == *xtrace* ]] && { echo 'pressure-telemetry: refusing to run under xtrace (it would print the Honeycomb key)' >&2; exit 2; }
 set -euo pipefail
 
 OTLP_ENDPOINT="${PRESSURE_TELEMETRY_OTLP_ENDPOINT:-https://api.honeycomb.io/v1/metrics}"

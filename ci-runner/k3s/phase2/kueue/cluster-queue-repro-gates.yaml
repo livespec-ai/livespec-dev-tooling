@@ -1,9 +1,6 @@
-# cluster-queue-repro-gates.yaml — the REPRODUCTION lane for gate Jobs: one
-# gate's worth of quota on gamingpc-xubuntu, kept apart from gates-cq so an
-# operator can run one diagnosed full-suite gate there while gates-cq's own
-# gamingpc lane stays held at zero (livespec-dev-tooling-pkmxgu, plan
-# gate-job-resources; the hold is livespec-dev-tooling#4210 and the hang it
-# guards against is livespec-dev-tooling-ddy5xu).
+# cluster-queue-repro-gates.yaml — the operator-only REPRODUCTION lane for gate
+# Jobs. It is kept apart from gates-cq so `just gate-repro --node <node>` can
+# run a diagnosed full-suite gate through an explicitly selected node flavor.
 #
 # NOTHING ORDINARY CAN REACH THIS QUEUE. A gate Job lands in the LocalQueue its
 # `kueue.x-k8s.io/queue-name` label names, and render-gate-job.sh writes
@@ -14,12 +11,11 @@
 # Pre-push and pre-commit delegation never name this queue, so held means held
 # for every gate a push or a commit sends.
 #
-# THE FLAVOR PINS THE NODE. Its `nodeLabels` select gamingpc-xubuntu by
-# hostname, exactly as gates-gamingpc-flavor does, and it names the same
-# `gates-hostname` Topology, so Kueue admits a repro gate only when that node
-# has free requests for it, the same topology-aware admission gates-cq uses.
-# It is a SEPARATE flavor because a ResourceFlavor's quota is per ClusterQueue
-# and this queue must hold quota where gates-cq holds none.
+# THE FLAVORS PIN THE NODES. Their `nodeLabels` select gmktec-xubuntu and
+# poweredge-xubuntu by hostname and name the same `gates-hostname` Topology.
+# Kueue therefore admits a repro gate only through the selected node's quota.
+# They are separate flavors because a ResourceFlavor's quota is per
+# ClusterQueue and this queue must hold quota where gates-cq holds none.
 #
 # DELIBERATELY NOT IN cluster-queue-gates.yaml. The readers of that file treat
 # every ResourceFlavor in it as a fleet gate lane: the ci_pool lane test maps
@@ -43,33 +39,11 @@
 # `cluster-queue-gates.yaml` in both the C and UTF-8 collations, while the
 # first-draft name `cluster-queue-gates-repro.yaml` sorted BEFORE it in both.
 #
-# PER-NODE FLAVORS (livespec-dev-tooling-cwrg3v). This queue now holds one
-# flavor per gate node (gamingpc, poweredge, gmktec, hp), each pinned by its
-# hostname nodeLabel. `just gate-repro --node <node>` renders a required
-# hostname nodeSelector on the Job, and Kueue assigns only the flavor whose
-# nodeLabels agree with it, so the Job is admitted through that node's quota and
-# runs only there. A flavor is ZERO unless armed (poweredge-xubuntu and
-# gmktec-xubuntu are each armed at one gate unit; gamingpc and hp-xubuntu stay at zero): arming a node means
-# raising ITS flavor to one gate unit in a separate pull request, which belongs
-# to plan gate-job-resources' per-node CPU budget (a repro gate is a second
-# 5 cpu / 8Gi claim on a node whose budget does not count it), and reverting
-# that pull request disarms it. READERS of these values, checked before this
-# change: the ci_pool lane test, the gate-unit test, the lane-order reconciler
-# and converge-worker-queues.sh all read cluster-queue-gates.yaml only, so none
-# sees this file's flavors.
-#
-# RETIRE this file once ddy5xu has named and fixed the hung step and
-# gates-gamingpc-flavor has its 5 / 8Gi back: then an ordinary gate reaches
-# gamingpc and a separate lane has nothing left to reproduce.
----
-apiVersion: kueue.x-k8s.io/v1beta2
-kind: ResourceFlavor
-metadata:
-  name: gates-repro-gamingpc-flavor
-spec:
-  nodeLabels:
-    kubernetes.io/hostname: gamingpc-xubuntu
-  topologyName: gates-hostname
+# PER-NODE FLAVORS (livespec-dev-tooling-cwrg3v). `just gate-repro --node
+# <node>` renders a required hostname nodeSelector, so Kueue assigns the Job
+# only through the flavor whose nodeLabels agree with it. Quota belongs only on
+# gmktec-xubuntu and poweredge-xubuntu. The retired gamingpc and hp flavors are
+# removed by converge-ci-stack.sh after this ClusterQueue is applied.
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
@@ -90,15 +64,6 @@ spec:
   topologyName: gates-hostname
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
-kind: ResourceFlavor
-metadata:
-  name: gates-repro-hp-flavor
-spec:
-  nodeLabels:
-    kubernetes.io/hostname: hp-xubuntu
-  topologyName: gates-hostname
----
-apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
 metadata:
   name: gates-repro-cq
@@ -112,29 +77,22 @@ spec:
       policy: Never
     withinClusterQueue: Never
   resourceGroups:
-    - coveredResources: ["cpu", "memory"]
+    - coveredResources: ["cpu", "memory", "ephemeral-storage"]
+      # EPHEMERAL-STORAGE IS COVERED (2026-11-22, plan gate-job-resources, tsde55
+      # ordering fix). A Workload that requests a resource no resource group
+      # covers is NEVER admitted ("resource ephemeral-storage unavailable in
+      # ClusterQueue"), and a repro Job is the same gate Job, so on 2026-11-21 one gate Job
+      # that requested ephemeral-storage held every later gate in the fleet Pending
+      # for about 20 minutes. ORDER: this manifest is applied through the committed
+      # converge BEFORE any gate client requests ephemeral-storage. Each flavor's
+      # ephemeral-storage quota is its concurrent repro gate count x the 2560Mi gate
+      # request (peak 1.62 GiB measured 2026-11-21 x 1.25, rounded up to 0.5 GiB;
+      # ci-runner/k3s/phase2/EPHEMERAL-STORAGE.md on tsde55). Allocatable read
+      # 2026-11-22: gmktec-xubuntu 434.4 GiB, hp-xubuntu 411.5 GiB, poweredge-xubuntu
+      # 186.0 GiB, gamingpc-xubuntu unreadable (NotReady), so no quota exceeds a
+      # node's disk. The pre-submit check in the gate client now refuses a Job whose
+      # requests this list does not cover.
       flavors:
-        - name: gates-repro-gamingpc-flavor
-          resources:
-            # ONE gate unit (gates-cq's ci-runner.io/gate-unit-cpu and
-            # gate-unit-memory annotations: 5 cpu / 8Gi), the size the held
-            # gates-gamingpc-flavor lane had before the hold. One repro at a
-            # time is the point: a second concurrent gate would make a hang
-            # on this node harder to attribute, not easier.
-            #
-            # ZERO since 2026-11-12 (plan gate-job-resources, assertion 6;
-            # legacy-coordinator-agent ruling). livespec-dev-tooling-ddy5xu is
-            # closed and gates-cq's gates-gamingpc-flavor is live again at one
-            # gate unit, so a quota here pinned a SECOND 5 cpu / 8Gi gate to
-            # gamingpc-xubuntu that its factory_pod_budget derivation
-            # (ansible/inventory/host_vars/gamingpc-xubuntu.yml) does not
-            # count. No seat still needs the reproduction route; its code is
-            # retired by a follow-up work item under the same plan. Until then
-            # `just gate-repro` cannot admit, by design.
-            - name: "cpu"
-              nominalQuota: 0
-            - name: "memory"
-              nominalQuota: 0Gi
         - name: gates-repro-poweredge-flavor
           resources:
             # ARMED: ONE gate unit (5 cpu / 8Gi, gates-cq's gate-unit
@@ -147,7 +105,7 @@ spec:
             #
             # RAISED 5 -> 10 cpu 2026-11-19 (livespec-dev-tooling-z66x7t;
             # throughput-plans-coordinator request), for the same reason as
-            # gmktec and hp below: a repo declaring gate_cpu = 10 (the
+            # gmktec below: a repo declaring gate_cpu = 10 (the
             # orchestrator) asks 10 cpu, and a 5-cpu flavor can never admit it
             # (the shellcheck OOM repro sdl8f read "insufficient quota" with no
             # other workload on the node). Read before raising: poweredge
@@ -156,8 +114,14 @@ spec:
             # set cpu back to 5.
             - name: "cpu"
               nominalQuota: 10
+            # RAISED 8Gi -> 16Gi 2026-11-22 (plan gate-job-resources, livespec-dev-tooling-ukoeah;
+            # legacy-coordinator-agent ruling "route poweredge repro memory 16Gi"):
+            # a second repro lane. Derived from node-memory-budget.yaml (repro_memory_gib 16.0);
+            # report-memory-budget.py reads poweredge committed 124.2Gi of 377Gi, fits.
             - name: "memory"
-              nominalQuota: 8Gi
+              nominalQuota: 16Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 5Gi
         - name: gates-repro-gmktec-flavor
           resources:
             # ARMED: ONE gate unit (5 cpu / 8Gi, gates-cq's gate-unit
@@ -193,24 +157,8 @@ spec:
               nominalQuota: 5
             - name: "memory"
               nominalQuota: 8Gi
-        - name: gates-repro-hp-flavor
-          resources:
-            # ZERO since 2026-11-19 (plan gate-job-resources, livespec-dev-tooling-
-            # wirn53; throughput-plans-coordinator ruling R301). The REVERT TRIGGER
-            # of its earlier arming fired: hp-xubuntu's host-wide cpu.some avg60
-            # peaked at 76.7 between 04:37:30Z and 04:43:07Z on 2026-11-19, with
-            # two repro-lane gate Jobs (gate-livespec-dev-tooling-j6hgj 15.38 cpu,
-            # -mzlkx 10.96 cpu measured, each requesting 5) running beside two
-            # petri factory sandboxes on 14.5 allocatable cpu. A 10 cpu quota
-            # admits two 5 cpu repro Jobs, and a gate Job has no cpu limit.
-            # Factory placement on hp is intended (no per-node factory cap), so
-            # the repro lane is the lever. Repro stays armed on gmktec and
-            # poweredge. REVERT PATH: revert this pull request, which restores
-            # 10 cpu / 8Gi (and re-arms the overcommit above).
-            - name: "cpu"
-              nominalQuota: 0
-            - name: "memory"
-              nominalQuota: 0Gi
+            - name: "ephemeral-storage"
+              nominalQuota: 2560Mi
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue

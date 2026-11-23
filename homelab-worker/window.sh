@@ -11,6 +11,13 @@
 #             WINDOW_STATE_DIR with the UTC time it was taken, as the window's
 #             before-state. Refuses to overwrite an existing snapshot, so the
 #             before-state is never replaced by a mid-window state.
+#   archive-snapshot  move a before-snapshot that has gone stale (older than
+#             WINDOW_MAX_AGE_SECONDS) or cannot be read to gates-cq-before.<UTC>.json
+#             in WINDOW_STATE_DIR, so a new window can take its own snapshot. It
+#             touches no cluster state and not the node. It refuses a snapshot still
+#             inside the limit (it is a live window's before-state) unless
+#             WINDOW_FORCE_ARCHIVE equals the node name. With no snapshot it says so
+#             and exits zero.
 #   join      join-worker.sh <host> --api-server $WINDOW_API_SERVER --server-ca
 #             $WINDOW_SERVER_CA. Refuses unless a snapshot taken for this window
 #             exists and is younger than WINDOW_MAX_AGE_SECONDS (default 86400),
@@ -40,7 +47,7 @@
 # Environment: WINDOW_NODE_CONFIRM (must equal <host>-homelab-worker),
 # WINDOW_STATE_DIR, WINDOW_API_SERVER, WINDOW_SERVER_CA, WINDOW_BOUND_SECONDS
 # (default 600), WINDOW_POLL_SECONDS (default 15), WINDOW_MAX_AGE_SECONDS,
-# WINDOW_RETRY_SECONDS (default 2), WINDOW_SCRIPTS_DIR (default: this script's
+# WINDOW_FORCE_ARCHIVE (archive-snapshot only), WINDOW_RETRY_SECONDS (default 2), WINDOW_SCRIPTS_DIR (default: this script's
 # directory), HOMELAB_WORKER_HOSTS_DIR.
 # Written for bash 3.2 (the macOS system bash); no mapfile.
 set -euo pipefail
@@ -62,7 +69,7 @@ say() {
   printf '%s: %s\n' "$prog" "$*"
 }
 
-[ "$#" -eq 2 ] || die "usage: $prog snapshot|join|drill|remove|check|revert <host>"
+[ "$#" -eq 2 ] || die "usage: $prog snapshot|archive-snapshot|join|drill|remove|check|revert <host>"
 action="$1"
 host="$2"
 case "$host" in
@@ -113,7 +120,7 @@ for p in json.load(sys.stdin).get("items", []):
 
 do_snapshot() {
   mkdir -p "$state"
-  [ ! -e "$snap" ] || die "a before-snapshot already exists at $snap; refusing to replace it (revert the window, or archive it deliberately)"
+  [ ! -e "$snap" ] || die "a before-snapshot already exists at $snap; refusing to replace it (revert the window, or run the archive-snapshot action to move it aside)"
   local out
   out="$(kubectl get clusterqueue gates-cq -o json)" || die "could not read gates-cq; no snapshot was taken"
   printf '%s' "$out" | python3 -c '
@@ -137,6 +144,20 @@ import json, sys, time
 age = time.time() - json.load(open(sys.argv[1]))["taken_at_epoch"]
 if age > int(sys.argv[2]):
     print("the before-snapshot at %s is %d s old, over the %s s window limit" % (sys.argv[1], age, sys.argv[2]))' "$snap" "$max_age"
+}
+
+# do_archive_snapshot: see the archive-snapshot action above. It reads the
+# snapshot's age only and never calls kubectl.
+do_archive_snapshot() {
+  local problem="" stamp
+  [ -f "$snap" ] || { say "no before-snapshot at $snap; nothing to archive"; return 0; }
+  problem="$(snapshot_problem 2>/dev/null)" || problem="the before-snapshot at $snap cannot be read"
+  if [ -z "$problem" ] && [ "${WINDOW_FORCE_ARCHIVE:-}" != "$node" ]; then
+    die "refusing to archive: the before-snapshot at $snap is inside the ${max_age} s window limit, so it is a live window's before-state (WINDOW_FORCE_ARCHIVE=$node forces it); nothing was changed"
+  fi
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  mv "$snap" "$state/gates-cq-before.$stamp.json"
+  say "archived the before-snapshot as $state/gates-cq-before.$stamp.json (${problem:-forced while fresh})"
 }
 
 # restore_queue: put back the flavor list of gates-cq's cpu resource group as the
@@ -218,6 +239,7 @@ do_check() {
 
 case "$action" in
   snapshot) do_snapshot ;;
+  archive-snapshot) do_archive_snapshot ;;
   join)
     problem="$(snapshot_problem)"
     [ -z "$problem" ] || die "refusing to join: $problem (run the snapshot action for this window first)"

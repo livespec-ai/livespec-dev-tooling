@@ -15,7 +15,7 @@
 # declares the packages its vendored runtime imports from outside itself
 # (v1.183.1 is the first that does), so the role installs the release and
 # nothing beside it.
-incident_observer_release: v1.231.2
+incident_observer_release: v1.236.0
 # The release this particular installation serves. Production keeps the normal
 # release above; the scratch variables set this from their own release pin so a
 # proof may install a candidate tag without changing production.
@@ -184,7 +184,9 @@ incident_observer_tenant_project_id: c8dcb5d9-1d1c-47d9-a1e5-f856e60b9544
 # empty list does neither, removes a policy an earlier apply installed, and the
 # controller answers every publication identity-not-provisioned. The role's
 # default is EMPTY; production's approved commits are the committed
-# `incident_observer_ci_publisher_shas` play variable in ansible/dev-host.yml. A
+# `incident_observer_ci_publisher_shas` in the dev host's host_vars
+# (inventory/host_vars/vps.yml), which both ansible/dev-host.yml and
+# ansible/incident-observer-installation.yml read (livespec-dev-tooling-dae4kc). A
 # roll lists the old and the new commit, moves the callers' pin, then drops the old one.
 incident_observer_ci_publisher_shas: []
 # The repository that ships the publisher is the first inventory entry, whose
@@ -302,8 +304,7 @@ incident_observer_installations:
   # workflow_job event reports them (a matrix job once per leg), with incident-ci
   # before ci-green as livespec-dev-tooling's own list has it (incident-ci reaches
   # the orchestrator and overseer with livespec-orchestrator-beads-fabro#5092 and
-  # livespec-overseer#2963; livespec's release-gate-pre-tag is skipped on master
-  # and reports once under that name). Each tenant id is that repository's
+  # livespec-overseer#2963). Each tenant id is that repository's
   # `.beads/metadata.json` project_id. The reader credential: the credential
   # wrapper projects ONE BEADS_DOLT_PASSWORD, the same from every checkout
   # (measured 2026-11-12), and the TENANT it opens is chosen by the reference
@@ -311,10 +312,15 @@ incident_observer_installations:
   # rendered into the clone's pointer. The apply proves that credential opens the
   # served tenant before it serves (tasks/converge.yml), so a later per-tenant
   # password cannot silently cross.
+  # livespec's release-gate-pre-tag is now a three-leg matrix whose legs report
+  # as `release-gate-pre-tag (<target>)`, and its ci-green also needs
+  # merge-group-guard (both measured on master push run 45036539777 at
+  # d98e222ba, 2026-11-22).
   - repository: livespec-ai/livespec
     repository_id: 1215509712
     owner_id: 356397670
     required_jobs:
+      - merge-group-guard
       - check-lint
       - check-format
       - check-types
@@ -325,7 +331,9 @@ incident_observer_installations:
       - check-doctor-static
       - check-copier-template-smoke
       - check-metadata-batch
-      - release-gate-pre-tag
+      - release-gate-pre-tag (check-mutation)
+      - release-gate-pre-tag (check-no-todo-registry)
+      - release-gate-pre-tag (check-no-lloc-soft-warnings)
       - incident-ci
       - ci-green
     port: 8770
@@ -412,6 +420,14 @@ incident_observer_merge_authority_script: "{{ incident_observer_reader_dir }}/{{
 # directory's config and the root runner's ledger call carries the tenant password. It is
 # never the observer-owned reference clone.
 incident_observer_merge_workdir: /opt/livespec-incident/merge-workdir
+# The fenced route that starts that runner (livespec-dev-tooling-4r5rrv): a root oneshot run
+# by a timer. Its marker directory is root-owned; one marker per (pull request, armed head)
+# keeps a start, and a recorded refusal, to once.
+incident_observer_merge_route_unit_name: livespec-incident-merge-route
+incident_observer_merge_route_service_path: /etc/systemd/system/livespec-incident-merge-route.service
+incident_observer_merge_route_timer_path: /etc/systemd/system/livespec-incident-merge-route.timer
+incident_observer_merge_route_interval: 1min
+incident_observer_merge_route_dir: /var/lib/livespec-incident/route
 
 # --- the scratch-branch instance ----------------------------------------------
 # False for production. ansible/incident-observer-scratch.yml sets it, with the

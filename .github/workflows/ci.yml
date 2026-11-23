@@ -1165,6 +1165,7 @@ jobs:
           just check-handoff-dispatch-routing || failed="$failed check-handoff-dispatch-routing"
           omitted_by_incident_policy check-heading-coverage || just check-heading-coverage || failed="$failed check-heading-coverage"
           omitted_by_incident_policy check-heading-coverage-debt-register || just check-heading-coverage-debt-register || failed="$failed check-heading-coverage-debt-register"
+          just check-hook-template-sandbox-image-path || failed="$failed check-hook-template-sandbox-image-path"
           just check-hook-trees-not-io-exempt || failed="$failed check-hook-trees-not-io-exempt"
           just check-marketplace-ref-release-only || failed="$failed check-marketplace-ref-release-only"
           just check-no-direct-destructive-cli || failed="$failed check-no-direct-destructive-cli"

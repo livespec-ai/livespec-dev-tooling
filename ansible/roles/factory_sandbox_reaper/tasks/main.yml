@@ -22,6 +22,7 @@
       - factory_sandbox_reaper_lithos_config | string | length > 0
       - factory_sandbox_reaper_user | string | length > 0
       - factory_sandbox_reaper_min_age_hours | int > 0
+      - factory_sandbox_reaper_running_min_age_hours | int > 0
       - factory_sandbox_reaper_max_deletions | int > 0
       - factory_sandbox_reaper_apply is boolean
     fail_msg: >-
@@ -117,6 +118,7 @@
     REAPER_LITHOS_BIN: "{{ factory_sandbox_reaper_lithos_bin }}"
     REAPER_PROVIDER: "{{ factory_sandbox_reaper_provider }}"
     REAPER_MIN_AGE_HOURS: "{{ factory_sandbox_reaper_min_age_hours }}"
+    REAPER_RUNNING_MIN_AGE_HOURS: "{{ factory_sandbox_reaper_running_min_age_hours }}"
     REAPER_MAX_DELETIONS: "{{ factory_sandbox_reaper_max_deletions }}"
     REAPER_APPLY: "0"
   changed_when: false

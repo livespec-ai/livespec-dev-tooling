@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from livespec_dev_tooling._incident_fleet_types import CapabilityEvidence
 
-__all__: list[str] = ["row_gap"]
+__all__: list[str] = ["RowReaders", "row_gap"]
 
 # EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-v46q5g
 _DISPOSITIONS = frozenset({"implemented", "deliberately-normal", "not-applicable"})
@@ -26,6 +27,51 @@ _INCOMPLETE_IMPLEMENTED = (
     "implemented claim lacks its incident item, normal factory proof or scope digest"
 )
 _UNREADABLE = "serving version unreadable: no installed serving build was read (unverified)"
+
+
+@dataclass(frozen=True, kw_only=True)
+class RowReaders:
+    """The independently injected readers a row is judged with.
+
+    `confirmed` is the independent re-read of a serving build, `explain` may name why a
+    reader's own read cannot bear a release-keyed claim out, and `citation` names why a
+    citing claim may not borrow another adopter's proving incident ("" when it may).
+    """
+
+    confirmed: Callable[[CapabilityEvidence], bool]
+    explain: Callable[[CapabilityEvidence], str]
+    citation: Callable[[CapabilityEvidence], str]
+
+
+def _citation_gap(
+    *, claim: CapabilityEvidence, citation: Callable[[CapabilityEvidence], str]
+) -> str:
+    """Return a citation's independent failure before a consumer can borrow proof."""
+    if not claim.cites_proving_incident:
+        return ""
+    missing = tuple(
+        name
+        for name, value in (
+            ("repository", claim.proving_repository),
+            ("incident item", claim.proving_incident_item),
+            ("release build", claim.proving_release_build),
+        )
+        if not value
+    )
+    if missing:
+        return "citing claim omits proving incident " + ", ".join(missing)
+    return citation(claim)
+
+
+def _implemented_gap(*, claim: CapabilityEvidence, instruction_only: bool) -> str:
+    """What an implemented claim lacks of its own incident; a citing claim carries another's."""
+    if claim.cites_proving_incident or instruction_only:
+        return ""
+    complete = (
+        bool(claim.incident_item and claim.normal_factory_proof)
+        and _SCOPE_DIGEST.fullmatch(claim.cumulative_scope) is not None
+    )
+    return "" if complete else _INCOMPLETE_IMPLEMENTED
 
 
 def _claim_gap(*, claim: CapabilityEvidence, manifest_sha256: str, instruction_only: bool) -> str:
@@ -44,12 +90,7 @@ def _claim_gap(*, claim: CapabilityEvidence, manifest_sha256: str, instruction_o
         return _INCOMPLETE_CLAIM
     if claim.disposition != "implemented":
         return "" if claim.reason else f"claim gives no reason for {claim.disposition}"
-    if instruction_only or (
-        bool(claim.incident_item and claim.normal_factory_proof)
-        and _SCOPE_DIGEST.fullmatch(claim.cumulative_scope) is not None
-    ):
-        return ""
-    return _INCOMPLETE_IMPLEMENTED
+    return _implemented_gap(claim=claim, instruction_only=instruction_only)
 
 
 def _serving_gap(
@@ -92,14 +133,14 @@ def row_gap(
     manifest_sha256: str,
     instruction_only: bool,
     inapplicable: bool,
-    confirmed: Callable[[CapabilityEvidence], bool],
-    explain: Callable[[CapabilityEvidence], str],
+    readers: RowReaders,
 ) -> str:
     """The first missing evidence of a row; "" when the claim classifies it.
 
-    `claim` carries the serving build the audit read for it. `confirmed` is the
-    independent re-read, and `explain` may name why a reader's own read cannot bear the
+    `claim` carries the serving build the audit read for it. `readers.confirmed` is the
+    independent re-read, and `readers.explain` may name why a reader's own read cannot bear the
     claim out (a release-keyed row's reason); its name wins over the generic serving gap.
+    `readers.citation` judges a claim citing another adopter's proving incident.
     A deliberately-normal claim's evidence is the ruling it cites, so it needs no serving
     read; a serving build it carries is a read of the consumer's own incident
     installation, which contradicts that ruling.
@@ -115,4 +156,7 @@ def row_gap(
         return gap
     if claim.disposition == "deliberately-normal":
         return _normal_gap(claim=claim)
-    return _serving_gap(claim=claim, confirmed=confirmed, explain=explain)
+    citation_failure = _citation_gap(claim=claim, citation=readers.citation)
+    if citation_failure:
+        return citation_failure
+    return _serving_gap(claim=claim, confirmed=readers.confirmed, explain=readers.explain)

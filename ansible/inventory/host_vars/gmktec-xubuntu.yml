@@ -319,8 +319,31 @@ fabro_server_instances:
     # 44898187765. Not yet live-proven here: the canary (:32278) is applied and
     # re-proved first. ROLLBACK: v0408-d22808f8e/fabro and
     # f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015, staged on the control node.
-    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-bee5378f9/fabro
-    binary_sha256: aa594e2c7f244eff64ae0fb83eed4026e6bfd77db5a6e7abf70a8fa5185cf019
+    # 2026-11-22: 2b0542c8e (fabro 0.408.0-nightly.0), the build the candidate
+    # runs (PR #5240): bee5378f9's leak fixes, the lost-sandbox resume
+    # (bd-ib-gngz5d, fork PR #41, on the candidate since 2026-11-14) and ONE engine
+    # change (livespec-orchestrator-beads-fabro bd-ib-mzov7o, plan fabro-currency,
+    # the engine half of bd-ib-o5kdau): a fabro-petri checkpoint commit that git
+    # refuses with "cannot lock ref 'HEAD'" because another writer moved HEAD
+    # retries on the new HEAD, at most 5 more times; a refusal that persists, and
+    # every other checkpoint failure, stays fatal (Scenario 170). Fork PR #44;
+    # carrier-build run 44945041005. The candidate canary 01M80Z25N44T passed every
+    # node through janitor on it, commit_green included, with no checkpoint
+    # failure; it then 403'd at publish_draft on the candidate's vault (a separate
+    # defect, livespec-dev-tooling-qen2bi), and the coordinator ruled (b) on that
+    # evidence. The retry itself is proved by the shim and throwaway-server trials;
+    # the roll is reverted unless the next live run that hits the HEAD race logs
+    # the retry. The fleet instance has SERVED d22808f8e since 2026-11-12
+    # (uptime 212h on 2026-11-22): the bee5378f9 pin above this one was staged and
+    # never restarted onto, so this roll goes d22808f8e -> 2b0542c8e directly.
+    # mi-homelab and the homelab worker keep their bee5378f9 pins, still unrestarted.
+    # ROLLBACK: v0408-d22808f8e/fabro and
+    # f32595473ecb0e476fb5b907d56a24aef7afe41040015379c1b88905057cf015 (the build it
+    # serves today); v0408-bee5378f9/fabro and
+    # aa594e2c7f244eff64ae0fb83eed4026e6bfd77db5a6e7abf70a8fa5185cf019 never served.
+    # Both are staged on the control node.
+    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-2b0542c8e/fabro
+    binary_sha256: a91b4f46a7f7597efd2b89e3af886c536e496d5382fbb23f3bcac93a40d1dbcc
     # On this engine the catalog, not the workflow table, decides the image.
     # The orchestrator workflow
     # (.claude-plugin/.fabro/workflows/implement-work-item/workflow.toml) pins
@@ -675,8 +698,24 @@ fabro_server_instances:
     # 44898185769. Not yet live-proven here: the canary (:32278) is applied and
     # re-proved first. ROLLBACK: v0408-c04730194/fabro and
     # 22e4723a2c6448793a6f0c485cca1a0158d4562068bf0dc38278ae7984bd55d2, staged on the control node.
-    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-c0a08dad1/fabro
-    binary_sha256: 736f1cc726386fb0182e4e82f2acda7e4861c87acd51fe441c718ba16679baf4
+    # 2026-11-21: 2b0542c8e (fabro 0.408.0-nightly.0) = c0a08dad1 plus ONE engine
+    # change (livespec-orchestrator-beads-fabro bd-ib-mzov7o, plan fabro-currency,
+    # the engine half of bd-ib-o5kdau): a fabro-petri checkpoint commit that git
+    # refuses with "cannot lock ref 'HEAD'" because another writer moved HEAD
+    # retries on the new HEAD, at most 5 more times; a refusal that persists, and
+    # every other checkpoint failure, stays fatal (Scenario 170). Fork PR #44
+    # merged green (Format, Clippy, Test, fabro-k3s run 44943345656; targeted RED
+    # run 44940828585); built on fabro-k3s by carrier-build run 44945041005. Proved
+    # on a throwaway server on vps (shim trials recover / fatal after 5 retries /
+    # no retry on another failure); the live proof here follows this apply.
+    # Candidate ONLY: the fleet instance, mi-homelab and homelab-worker stay put.
+    # ROLLBACK: v0408-c0a08dad1/fabro and
+    # 736f1cc726386fb0182e4e82f2acda7e4861c87acd51fe441c718ba16679baf4, then
+    # v0408-c04730194/fabro and
+    # 22e4723a2c6448793a6f0c485cca1a0158d4562068bf0dc38278ae7984bd55d2, all staged
+    # on the control node.
+    binary_source: /home/ubuntu/.local/state/fabro-web-prod/v0408-2b0542c8e/fabro
+    binary_sha256: a91b4f46a7f7597efd2b89e3af886c536e496d5382fbb23f3bcac93a40d1dbcc
     # The fleet instance's catalog, entry for entry; the reasons for each
     # entry are given there. Bump the images together with it.
     # The three python entries on the `kubernetes` provider take the fleet's

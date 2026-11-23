@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from tests.livespec_dev_tooling import test_incident_observer_role_production_unchanged as base
@@ -19,7 +20,12 @@ from tests.livespec_dev_tooling import test_incident_observer_role_production_un
 # EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-bqnzcm.4
 _SHA = "1" * 40
 _PRODUCTION_PUBLISHER_SHA = "92debdb271bb6ad9292ea5f64d9d3d7527352278"
-_DEV_HOST_PLAY = Path(__file__).resolve().parents[2] / "ansible" / "dev-host.yml"
+_ANSIBLE = Path(__file__).resolve().parents[2] / "ansible"
+_DEV_HOST_VARS = _ANSIBLE / "inventory" / "host_vars" / "vps.yml"
+_OBSERVER_PLAYS = (
+    _ANSIBLE / "dev-host.yml",
+    _ANSIBLE / "incident-observer-installation.yml",
+)
 _RENDER_POLICY = "Render this installation's CI identity policy from its inventory entry"
 _INSTALL_POLICY = "Install the CI identity policy, private to the controller account"
 _CI_TASKS = (
@@ -50,25 +56,65 @@ def test_no_approved_publisher_commit_provisions_no_policy() -> None:
     )
 
 
-def test_the_role_default_provisions_no_policy_and_the_production_play_lists_the_publisher() -> (
-    None
-):
+def _incident_observer_overrides(*, play_path: Path) -> list[dict[str, Any]]:
+    """Every variable mapping the play sets above the inventory for the observer role.
+
+    Play vars, the vars files it loads, and each `incident_observer` role entry's
+    vars all outrank host_vars, so any one of them shadows the host's list.
+    """
+    mappings: list[dict[str, Any]] = []
+    for play_ in yaml.safe_load(play_path.read_text(encoding="utf-8")):
+        mappings.append(play_.get("vars") or {})
+        for relative in play_.get("vars_files") or []:
+            mappings.append(
+                yaml.safe_load((play_path.parent / relative).read_text(encoding="utf-8")) or {}
+            )
+        mappings.extend(
+            entry.get("vars") or {}
+            for entry in play_.get("roles", [])
+            if isinstance(entry, dict) and entry.get("role") == "incident_observer"
+        )
+    return mappings
+
+
+def test_the_role_default_provisions_no_policy_and_the_host_lists_the_publisher() -> None:
     # SPECIFICATION/contracts.md v242, "Expedited incident execution", public
     # ingress: the role's own default is an empty list; production's approved
-    # commit is the committed play variable in ansible/dev-host.yml.
+    # commit is the dev host's host_vars value.
     variables = base.production_variables()
-    play = yaml.safe_load(_DEV_HOST_PLAY.read_text(encoding="utf-8"))
-    entries = [
-        entry
-        for play_ in play
-        for entry in play_.get("roles", [])
-        if isinstance(entry, dict) and entry.get("role") == "incident_observer"
-    ]
+    host_vars = yaml.safe_load(_DEV_HOST_VARS.read_text(encoding="utf-8"))
 
     assert variables["incident_observer_ci_publisher_shas"] == []
     assert "--ci-identity-policy" not in _argv(variables=variables)
-    assert len(entries) == 1
-    assert entries[0]["vars"]["incident_observer_ci_publisher_shas"] == [_PRODUCTION_PUBLISHER_SHA]
+    assert host_vars["incident_observer_ci_publisher_shas"] == [_PRODUCTION_PUBLISHER_SHA]
+
+
+@pytest.mark.parametrize("play_path", _OBSERVER_PLAYS, ids=lambda path: path.name)
+def test_every_observer_play_reads_the_hosts_one_publisher_list(play_path: Path) -> None:
+    # livespec-dev-tooling-dae4kc: the installation playbook once left the list at
+    # the role's empty default while ansible/dev-host.yml set it as a play
+    # variable, so /ci/publish fell out of the funnel union and the installation
+    # apply refused production's live, ratified route. Both plays read the ONE
+    # host_vars list; a play that sets it again shadows that list.
+    shadowing = [
+        mapping
+        for mapping in _incident_observer_overrides(play_path=play_path)
+        if "incident_observer_ci_publisher_shas" in mapping
+    ]
+
+    assert shadowing == []
+
+
+def test_the_hosts_publisher_list_puts_ci_publish_in_every_installations_routes() -> None:
+    host_vars = yaml.safe_load(_DEV_HOST_VARS.read_text(encoding="utf-8"))
+    variables = {
+        **base.production_variables(),
+        "incident_observer_ci_publisher_shas": host_vars["incident_observer_ci_publisher_shas"],
+    }
+
+    assert (
+        "/ci/publish" in base.resolve(variables=variables)["incident_observer_installation_routes"]
+    )
 
 
 def test_a_listed_publisher_publishes_the_ci_publish_route_beside_the_two_routes() -> None:

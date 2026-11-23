@@ -4,16 +4,19 @@
 # procedure, the rollback, and why cargo build targets are out of scope.
 
 dev_host_retention_bin: /usr/local/sbin/livespec-dev-host-retention
+dev_host_retention_scratch_bin: /usr/local/sbin/livespec-dev-host-retention-scratch
 dev_host_retention_uv_bin: /usr/bin/uv
 # Only read to name the installed versions when the configured uv is missing.
 dev_host_retention_uv_installs_dir: "/home/{{ dev_host_retention_user }}/.local/share/mise/installs/uv"
 dev_host_retention_unit_dir: /etc/systemd/system
 dev_host_retention_service: livespec-dev-host-retention.service
 dev_host_retention_timer: livespec-dev-host-retention.timer
-# The committed hold. False stops and disables the retention timer on the next
-# converge, and keeps it so: a hold that lives only in a hand `systemctl stop`
-# is undone by the next converge, whose arming task restarts the timer, and the
-# timer's Persistent=true then fires the missed daily run at once
+dev_host_retention_scratch_service: livespec-dev-host-retention-scratch.service
+dev_host_retention_scratch_timer: livespec-dev-host-retention-scratch.timer
+# The committed hold. False stops and disables both retention timers on the
+# next converge, and keeps them so: a hold that lives only in a hand `systemctl
+# stop` is undone by the next converge, whose arming task restarts the timers,
+# and their Persistent=true setting then fires missed runs at once
 # (livespec-dev-tooling-7bij7b).
 dev_host_retention_timer_enabled: true
 
@@ -29,11 +32,27 @@ dev_host_retention_timer_enabled: true
 # nobody will open again.
 dev_host_retention_gate_run_days: 7
 dev_host_retention_scratch_retention_hours: 6
+# The frequent run only reclaims aged Claude Code and pytest scratch.  Keep
+# expensive docker, uv, gate-run, marketplace-backup and bulk-dump work on the
+# daily timer.
+dev_host_retention_scratch_on_unit_active_sec: 2h
 dev_host_retention_root_threshold_percent: 85
 dev_host_retention_tmp_threshold_percent: 75
 dev_host_retention_bulk_dump_dir: /var/tmp/livespec-dumps
 dev_host_retention_bulk_dump_cap_bytes: 21474836480
 dev_host_retention_capacity_repeat_interval_seconds: 3600
+# The uv cache size cap, in GB (decimals allowed). After the prune, a cache over
+# this that no uv process holds is emptied; a cache under it is left in place.
+dev_host_retention_uv_cache_max_gb: 10
+# A capacity alert names who acts on it and where the first steps are written,
+# and is also recorded as a comment on the coordinator epic so a seat reads it
+# within a tick. The ledger record needs the credential wrapper and a ledger
+# checkout; where either is missing the check degrades to the push alone.
+dev_host_retention_alert_owner: "vps-control-node-ops seat (escalate to legacy-coordinator-agent)"
+dev_host_retention_alert_runbook: "livespec-dev-tooling ansible/roles/dev_host_retention/HOST_VARS.md, section 'Disk full: first steps'"
+dev_host_retention_alert_ledger_epic: livespec-dev-tooling-6tgd2z
+dev_host_retention_alert_ledger_dir: /home/ubuntu/workspace/livespec-dev-tooling
+dev_host_retention_alert_ledger_wrapper: /usr/local/bin/with-livespec-env.sh
 dev_host_retention_capacity_check_bin: /usr/local/sbin/livespec-dev-host-capacity-check
 dev_host_retention_capacity_check_service: livespec-dev-host-capacity-check.service
 dev_host_retention_capacity_check_timer: livespec-dev-host-capacity-check.timer

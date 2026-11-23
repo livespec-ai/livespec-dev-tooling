@@ -268,6 +268,9 @@ tells the owning seat; a seat is asked only when the remedy needs its scope or p
   ships). After a revise ratifies, name the ratified headings in References first. [6tgd2z 2026-11-15T04:19:28Z.]
 - A DoD edit (a References repair included) changes the behaviour digest and voids a prior tier release; re-read the
   tier after it. [6tgd2z 2026-11-10T00:34:19Z, 2026-11-15T03:54:05Z.]
+- Repair References FIRST, release the tier SECOND. A References-line edit made after a `release-spec-tier` silently
+  voids the release (bd-ib-qc6btm), and the next screen re-holds the item on the same topic. Measured on bd-ib-4ifdud
+  2026-11-21 ~23:2xZ by legacy-dispatcher-agent. [6tgd2z 2026-11-21 ~23:3xZ.]
 - Release any held item that is not a contract, safety or user-promise change as internal: press
   `release-spec-tier:<id>:<## heading>` itself, citing the nearest ratified heading and recording the basis on the item.
   A hold on a genuine contract change still waits for its propose-change. For work that is a contract, the tier release
@@ -492,6 +495,19 @@ copy, rotation or config change would unblock the plan. A tenant's factory crede
 central-credential-service rotates (for example `--keep CLAUDE_CODE_OAUTH_TOKEN__ANTHROPIC_4`), never a repo-owned
 account (coordinator's reading). Maintainer [6tgd2z ~2026-11-15T05:3xZ]: "Yes, I authorize whatever you fucking need to
 do to keep the plans moving, as I already had. You don't need to keep asking me."
+
+**Rule CREDENTIAL-CALLS-ARE-THE-COORDINATOR'S: credential, route and test-method questions are decided by the
+coordinator and routed to the owning seat; only physical acts no agent can do stay on the maintainer list.** A
+guaranteed-legitimate forwarded usage-limit refusal from any listed host (authenticated as that host's own observation
+and verified as a real refusal of the active account) holds the active account fleet-wide. A test that needs a login
+runs isolated (a container or separate caam state with a copied credential injected; typing /login into a separate pane
+is authorized), never by asking the maintainer. Maintainer [6tgd2z 2026-11-22T12:53:46Z]: "Some of those questions, for
+me, I think you can resolve yourself. For example, the credentials one: do whatever makes sense. If we are guaranteed
+that a remote quote of fail is legitimate, then yes, definitely flip it everywhere because that may be the first one to
+find it". Maintainer [6tgd2z 2026-11-22T13:03:30Z]: "Yes go ahead and do that test. You have seven accounts to work
+with. Do whatever you need to do and you are authorized to type things into panes so you can type login into a separate
+pane. Don't deadlock yourself. Test this in a container or something with different account credentials injected. You
+can copy credentials around too. There's no reason you can't test all this yourself autonomously. Stop blocking on me."
 
 **Rule OVERRIDE-THEN-BACKFILL: a committed-route ordering never deadlocks a plan.** When one would (merge-before-apply,
 CI waits, or a guard refusing a route only on its path), the coordinator makes the change now and backfills the GitOps

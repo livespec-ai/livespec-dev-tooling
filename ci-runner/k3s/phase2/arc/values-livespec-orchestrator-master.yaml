@@ -38,6 +38,7 @@ template:
   metadata:
     labels:
       kueue.x-k8s.io/queue-name: livespec-orchestrator-master-lq
+      kueue.x-k8s.io/priority-class: ci-normal
   spec:
     schedulerName: ci-runner-scheduler
     tolerations:

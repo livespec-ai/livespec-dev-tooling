@@ -76,7 +76,9 @@ In a trusted normal origin (a master-push CI job or a factory sandbox; see
 an inherited `EXPEDITED_INCIDENT_RESPONSE_REVERT` there runs the ordinary hook and
 never reaches this hand-off.
 
-Workflow publication needs separate scoped authority. Unsupported marker formats
+A changed `.github/workflows/` path is admitted only when the current attempt carries a
+maintainer-attested `workflow_paths` list naming it; any other workflow path is refused naming the
+missing workflow-scoped authorization and the path. Unsupported marker formats
 require a legal adjacent Python carrier. Genesis, factory fencing,
 focused/manual merge admission, other direct/delegated entrances, CI/templates,
 release and installed fleet adoption remain required plan work. Developing this

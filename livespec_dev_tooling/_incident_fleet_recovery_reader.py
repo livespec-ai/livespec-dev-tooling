@@ -3,16 +3,18 @@
 Recovery authorization has two halves and both must be read. The principal that acts is
 the controller's released package, so its serving version is the controller's; and the
 consumer's default branch must let exactly one GitHub App bypass the rulesets that guard
-it, always. Every active branch ruleset is evaluated against the default branch the way
-GitHub evaluates `conditions.ref_name`: `~DEFAULT_BRANCH`, `~ALL` and `refs/heads/...`
-patterns, includes minus excludes. The bypass actors of every ruleset that guards the
-default branch are counted together.
+it, always. The incident-merge Integration the spec permits beside it, with `bypass_mode`
+pull_request, is not an always-bypass actor and is not counted. Every active branch
+ruleset is evaluated against the default branch the way GitHub evaluates
+`conditions.ref_name`: `~DEFAULT_BRANCH`, `~ALL` and `refs/heads/...` patterns, includes
+minus excludes. The bypass actors of every ruleset that guards the default branch are read
+together, and only those with `bypass_mode` always are counted.
 
 The read fails CLOSED. A consumer is unverified when its controller is unverified; when
 its repository, its ruleset list or ANY active branch ruleset's detail cannot be read;
 when a ruleset's conditions or bypass list cannot be evaluated (an unknown condition, a
 pattern this reader cannot match with certainty, an absent bypass list); or when the
-bypass actors are not exactly one always-bypass App. An unreadable ruleset is never
+always-bypass actors are not exactly one App. An unreadable ruleset is never
 taken to be one that does not guard the branch. The forge is read with the operator's
 own `gh` credential; no consumer is credentialed.
 """
@@ -133,9 +135,12 @@ def read_recovery_authorization(
     if controller is None:
         return None
     actors = _bypass_actors(read_forge=read_forge, repository=repository)
-    if actors is None or len(actors) != 1:
+    if actors is None:
         return None
-    actor = actors[0]
+    always = [actor for actor in actors if actor.get("bypass_mode") == "always"]
+    if len(always) != 1:
+        return None
+    actor = always[0]
     app = actor.get("actor_id")
     sole = actor.get("actor_type") == "Integration" and actor.get("bypass_mode") == "always"
     return f"{controller}+bypass-app-{app}" if sole and type(app) is int else None

@@ -100,6 +100,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "non-functional-requirements.md",
+    "heading": "## Ledger mailbox seat channel",
+    "work_item": "livespec-dev-tooling-o767ny",
+    "first_seen": "2026-11-21"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "non-functional-requirements.md",
     "heading": "## Merged-green throughput telemetry",
     "work_item": "livespec-dev-tooling-gaetnq",
     "first_seen": "2026-11-18"
@@ -408,9 +415,30 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate outcome event carries the gate Job's queue wait and run duration",
+    "work_item": "livespec-dev-tooling-7g45w6",
+    "first_seen": "2026-11-23"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: a delegated gate run its own client interrupts emits a client-interrupted no-verdict outcome event",
     "work_item": "livespec-dev-tooling-donph5",
     "first_seen": "2026-11-11"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate run stopped after admission carries its queue wait and no run duration",
+    "work_item": "livespec-dev-tooling-7g45w6",
+    "first_seen": "2026-11-23"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate run stopped before admission carries no queue wait or run duration",
+    "work_item": "livespec-dev-tooling-7g45w6",
+    "first_seen": "2026-11-23"
   },
   {
     "spec_root": "SPECIFICATION",
@@ -1143,6 +1171,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: a seat reads a message another seat sent it through the ledger mailbox without any pane typing",
+    "work_item": "livespec-dev-tooling-o767ny",
+    "first_seen": "2026-11-21"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: a seat's gate-runner full suite runs as a gate Job by default",
     "work_item": "livespec-dev-tooling-lugvnr",
     "first_seen": "2026-11-01"
@@ -1153,13 +1188,6 @@
     "heading": "## Scenario: a self-hosted CI job's span names its runner pod, which joins to the node that ran it",
     "work_item": "livespec-dev-tooling-wnwwsl",
     "first_seen": "2026-11-11"
-  },
-  {
-    "spec_root": "SPECIFICATION",
-    "spec_file": "scenarios.md",
-    "heading": "## Scenario: a shared-surface claim cites another adopter's proving incident only where the shared build fully determines the surface",
-    "work_item": "livespec-dev-tooling-vkkhsj",
-    "first_seen": "2026-11-21"
   },
   {
     "spec_root": "SPECIFICATION",
@@ -1787,9 +1815,23 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: dev host retention reports merged, aged worktrees and removes none",
+    "work_item": "livespec-dev-tooling-yratl6",
+    "first_seen": "2026-11-23"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: dev host retention still cleans aged terminal gate runs from every readable checkout",
     "work_item": "livespec-dev-tooling-jm2tkj",
     "first_seen": "2026-11-18"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: dev host retention's uv-cache ownership walk cut off by its budget carries on from the changed paths",
+    "work_item": "livespec-dev-tooling-umy3ry",
+    "first_seen": "2026-11-23"
   },
   {
     "spec_root": "SPECIFICATION",
@@ -2014,6 +2056,13 @@
     "heading": "## Scenario: the highest-ordered ready target is admitted to any execution target with headroom for its cost",
     "work_item": "livespec-dev-tooling-hvfc6c",
     "first_seen": "2026-11-04"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: the incident CI entrance provisions locked pyright before it launches any member",
+    "work_item": "livespec-dev-tooling-xdt4ue",
+    "first_seen": "2026-11-23"
   },
   {
     "spec_root": "SPECIFICATION",

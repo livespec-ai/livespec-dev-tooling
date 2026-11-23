@@ -1558,6 +1558,52 @@ Then the push MUST complete
 
 And the gate client MUST report the same verdict, and exit with the same status, that it reports when the outcome event is delivered
 
+## Scenario: a delegated gate outcome event carries the gate Job's queue wait and run duration
+
+Given a consumer repository whose `[tool.livespec_dev_tooling]` table sets `delegated_gate = true`
+
+And a pushing host where the pushing user can read the gates kubeconfig
+
+When a git push of a tree that has no green token runs the pre-push gate, and its gate Job is admitted by the cluster's queue and reaches its Complete condition with a green verdict
+
+Then the gate client MUST emit exactly one outcome event whose outcome is `passed`
+
+And that event MUST carry `livespec.gate.queue_wait_seconds`, equal to the seconds from the Job's `metadata.creationTimestamp` to its `status.startTime`
+
+And that event MUST carry `livespec.gate.duration_seconds`, equal to the seconds from the Job's `status.startTime` to the `lastTransitionTime` of its Complete condition
+
+## Scenario: a delegated gate run stopped before admission carries no queue wait or run duration
+
+Given a consumer repository whose `[tool.livespec_dev_tooling]` table sets `delegated_gate = true`
+
+And a pushing host where the pushing user can read the gates kubeconfig
+
+And a git push of a tree that has no green token whose pre-push gate has submitted its gate Job
+
+When the gate client receives SIGTERM while the cluster's queue has not yet admitted that Job
+
+Then the gate client MUST emit exactly one outcome event whose outcome is `no-verdict`
+
+And that event MUST NOT carry `livespec.gate.queue_wait_seconds`
+
+And that event MUST NOT carry `livespec.gate.duration_seconds`
+
+## Scenario: a delegated gate run stopped after admission carries its queue wait and no run duration
+
+Given a consumer repository whose `[tool.livespec_dev_tooling]` table sets `delegated_gate = true`
+
+And a pushing host where the pushing user can read the gates kubeconfig
+
+And a git push of a tree that has no green token whose pre-push gate has submitted its gate Job, which the cluster's queue has admitted
+
+When the gate client stops waiting before that Job reaches a terminal condition, because it receives SIGTERM or because its poll budget runs out
+
+Then the gate client MUST emit exactly one outcome event whose outcome is `no-verdict`
+
+And that event MUST carry `livespec.gate.queue_wait_seconds`, equal to the seconds from the Job's `metadata.creationTimestamp` to its `status.startTime`
+
+And that event MUST NOT carry `livespec.gate.duration_seconds`
+
 ## Scenario: the fabro-hosts play renders the factory registry from the inventory's factory names
 
 Given `fabro_factory_registry` maps `legacy` to one host's instance with a `docker_host`, and maps `petri` to another host's instance with no `docker_host`
@@ -3974,6 +4020,17 @@ And an HTTP 404 answer whose body is JSON MUST fail the read at its first attemp
 And when GitHub answers every attempt of ci-green's read of its own run's jobs with an HTTP 5xx status, ci-green MUST fail closed after six attempts, naming that read.
 ```
 
+## Scenario: the incident CI entrance provisions locked pyright before it launches any member
+
+```gherkin
+Given an incident CI plan that selects two members which both invoke pyright, in a repository whose lock pins pyright, on a runner whose pyright cache is cold
+When the incident CI entrance executes the plan
+Then the entrance MUST complete the locked pyright provisioning exactly once before it launches either member
+And it MUST launch neither member until that provisioning has completed
+And when the provisioning fails, the entrance MUST launch no member, MUST print one line naming the provisioning and its failure, and MUST fail the job
+And in a repository whose lock does not pin pyright, the entrance MUST launch its members without attempting any pyright provisioning.
+```
+
 ## Scenario: an incident label event's forge writes repeat only what did not take effect
 
 ```gherkin
@@ -5913,6 +5970,22 @@ Then no hook installed by the role refuses the command
 
 And the managed `CLAUDE.md` that session loaded tells it to prefer `SendMessage` and that typing into a pane stays available when that is necessary
 
+## Scenario: a seat reads a message another seat sent it through the ledger mailbox without any pane typing
+
+Given two seats on different hosts that share the ledger, and a recipient seat with an installed mailbox read hook
+
+When the sender runs `mailbox send --to <recipient> --urgency normal <body>`
+
+Then the command prints a record id and the ledger holds one record addressed to the recipient
+
+And at the recipient's next turn boundary the hook injects that message into its context and stamps `read_at` and `read_by`
+
+And no text is typed into any pane, and a second read returns no message
+
+And when a message sent with `--urgency urgent` is still unread past the dwell, the poller writes a journal line, an alarm file and a ledger comment on the coordinator epic, once, and types nothing
+
+And when the sender runs the command while the ledger refuses writes, it exits non-zero and prints no record id
+
 ## Scenario: a memory file on an agent-seat host becomes one migration item in its owning repository
 
 Given the `fleet_memory_sweep` role is applied to the control node
@@ -6514,3 +6587,33 @@ And the renderer invoked with --queue gates-repro-lq and --node gmktec-xubuntu M
 And the gates-repro-cq ClusterQueue MUST list a ResourceFlavor for gmktec-xubuntu and one for poweredge-xubuntu, and MUST list none for gamingpc-xubuntu or hp-xubuntu.
 And a converge run MUST leave neither the gates-repro-gamingpc-flavor nor the gates-repro-hp-flavor ResourceFlavor on the cluster, and a second run MUST NOT fail on their absence.
 ```
+
+## Scenario: dev host retention reports merged, aged worktrees and removes none
+
+Given a dev host whose worktree root holds a worktree whose branch is merged into the remote default branch, clean and older than the worktree report period
+
+And a worktree with an uncommitted change
+
+And a worktree whose branch has a commit not on the default branch
+
+When the retention run executes
+
+Then the run's log names the merged, clean, aged worktree with its repository, branch and size
+
+And it names neither of the other two
+
+And all three worktrees are still present after the run
+
+## Scenario: dev host retention's uv-cache ownership walk cut off by its budget carries on from the changed paths
+
+Given a dev host whose uv cache is too large for the ownership walk to finish inside its budget, and holds no recorded walk start
+
+When the retention run executes
+
+Then the walk stops at its budget, the prune still runs, and the run logs the walk as cut off with its duration
+
+And the walk's start time is recorded
+
+When a path owned by another user is written into the cache, and the retention run executes again
+
+Then the second walk visits only the paths changed since the recorded start, hands that path back to the cache owner before the prune, and logs the walk as completed

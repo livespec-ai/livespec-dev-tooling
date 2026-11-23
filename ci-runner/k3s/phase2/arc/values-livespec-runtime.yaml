@@ -71,6 +71,7 @@ template:
       # Routes this scale set's runner pods through Kueue's per-repo LocalQueue
       # rather than straight to the Kubernetes scheduler.
       kueue.x-k8s.io/queue-name: livespec-runtime-lq
+      kueue.x-k8s.io/priority-class: ci-normal
   spec:
     # Placed by `ci-runner-scheduler` (../runner-scheduler/runner-scheduler.yaml),
     # like every scale set whose runner pods request a churn slot

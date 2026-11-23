@@ -186,3 +186,54 @@ Bounding maxRunners to the quota (2026-09-06)"). Check the ceilings before blami
   to two cores per runner, `cp` volume seeding, `rm` teardown, namespace and
   veth churn showing as 17–20 % system time). Derive the cap at the heavy
   mix; the light one flatters it.
+
+## gmktec is memory-bound: the request sum, not CPU, limits churn slots there
+
+Read this before proposing any churn-slot raise on `gmktec-xubuntu`. On
+2026-11-22 a 1 to 3 slot change took the node's memory REQUESTS to 97 % of
+allocatable while real use was 41 %, and the kubelet refused an 8Gi gate Job
+with `OutOfmemory` (reverted in full, `527b7a16a`, livespec-dev-tooling#5272).
+The node was 96 % idle on CPU the whole time, so the CPU rules above do not
+apply: the kubelet admits against requests, and the requests are what ran out.
+
+The invariant, from measured values only:
+
+```text
+slots = floor((0.90 x allocatable - factory_pod_cap x factory_request - daemons) / runner_request)
+```
+
+Constants measured 2026-11-22 (read them again before using them): allocatable
+62.4Gi (`65466156Ki` from the kubelet), factory pod request 7.45Gi, runner pod
+request 6.0Gi (the largest live runner request), daemons 1.0Gi (warm-cache 0.5,
+kueue 0.5).
+
+Measured factory peaks on gmktec over 7 days (Honeycomb `metrics`, namespace
+`factory`, node `gmktec-xubuntu`):
+
+- Source A: at most 8 distinct factory pods in any 5-minute bucket (9 in a
+  15-minute bucket). The 5-minute bucket is the finest the tool gives; it
+  over-counts pods that begin and end inside one bucket, so true concurrency is
+  7 to 8.
+- Source B: the launcher's `seq-*.log` lines in the orchestrator repo's
+  `tmp/petri-canary` carry `live=N`, which is a fleet-wide count at each dispatch
+  decision, not a gmktec count. It cannot give gmktec's peak.
+
+At 8 factory pods the factory alone is 59.6Gi and with one 6.0Gi slot the sum is
+66.6Gi, over allocatable. The peaks were not coincident with a loaded runner
+slot and the scheduler refuses placement past 100 %, so these sums are an
+upper bound, not an additive forecast. The factory's per-target caps live in
+the dispatcher's state, `tmp/petri-canary/gmk-cap` (20 today, so it does not
+bind), with `fleet-cap`, `candidate-cap` and `hl-cap`; they are edited through
+`legacy-dispatcher-agent` with a backup. The ruling of 2026-11-22
+(throughput-plans-coordinator, legacy-coordinator-agent) is: no cap change and
+no slot change; gmktec stays at one slot.
+
+Conclusion: slot growth on gmktec trades directly against factory concurrency,
+because both draw on the same request budget. More CI capacity has to come from
+elsewhere (hp, whose gate quota the maintainer vacated on 2026-11-16 under
+FOCUS-TWO-LEVERS; poweredge, which is CPU-bound at 22 slots; the arm64 Mac;
+gamingpc when it is back) or from lower factory or runner requests. Cutting
+the request is a small lever: the live runner request (6.0Gi) is already within
+3 percent of 1.25 times the measured gmktec per-slot peak (about 4.6GB), and the
+per-slot 11Gi in `DERIVATION.md` is a Kueue quota share (cohort headroom divided
+by slots), not a pod request.

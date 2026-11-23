@@ -6,8 +6,9 @@ import re
 from collections.abc import Callable
 from dataclasses import replace
 
-from livespec_dev_tooling._incident_fleet_capabilities import SURFACE_CAPABILITY
-from livespec_dev_tooling._incident_fleet_row_gap import row_gap
+from livespec_dev_tooling._incident_fleet_capabilities import GUIDANCE_SURFACES, SURFACE_CAPABILITY
+from livespec_dev_tooling._incident_fleet_citation import citation_reader
+from livespec_dev_tooling._incident_fleet_row_gap import RowReaders, row_gap
 from livespec_dev_tooling._incident_fleet_types import (
     CapabilityEvidence,
     FleetAudit,
@@ -61,7 +62,6 @@ SURFACES: tuple[str, ...] = (
 )
 
 
-_GUIDANCE_SURFACES = frozenset({"Agent tool and stop guards", "Operator factory routing"})
 # The consumer's own incident installation; every other capability is a shared build.
 _OWN_INSTALLATION = frozenset({"independent-controller", "recovery-authorization"})
 
@@ -111,13 +111,12 @@ def _consumer_rows(
     instruction_only: bool,
     manifest_sha256: str,
     indexed: dict[tuple[str, str], CapabilityEvidence],
-    verify_evidence: Callable[[CapabilityEvidence], bool],
-    explain: Callable[[CapabilityEvidence], str],
+    readers: RowReaders,
 ) -> tuple[SurfaceDisposition, ...]:
     rows: list[SurfaceDisposition] = []
     for surface in SURFACES:
         evidence = indexed.get((repository, surface))
-        inapplicable = instruction_only and surface not in _GUIDANCE_SURFACES
+        inapplicable = instruction_only and surface not in GUIDANCE_SURFACES
         if inapplicable and evidence is None:
             rows.append(
                 SurfaceDisposition(
@@ -133,8 +132,7 @@ def _consumer_rows(
             manifest_sha256=manifest_sha256,
             instruction_only=instruction_only,
             inapplicable=inapplicable,
-            confirmed=verify_evidence,
-            explain=explain,
+            readers=readers,
         )
         if gap or evidence is None:
             rows.append(
@@ -193,7 +191,9 @@ def audit_incident_fleet(
     `explain` may name why a claim cannot classify against what was read. Every unclassified
     row names its missing evidence: that reason when it names one, otherwise the first gap
     the row has (no claim, a malformed or foreign-identity claim, an unreadable or stale
-    serving version, or a re-read that did not confirm it).
+    serving version, or a re-read that did not confirm it). A claim citing another adopter's
+    proving incident borrows it only where the committed configuration records its surface as
+    fully determined by the shared build and the cited incident authenticates as an own claim.
     This function creates no credentials, lifecycle records or activation effects.
     """
     consumers = _consumers(manifest=manifest)
@@ -212,6 +212,19 @@ def audit_incident_fleet(
             ready_repositories=(),
         )
     indexed, invalid_evidence = _index_evidence(evidence=evidence, consumers=consumers)
+    readers = RowReaders(
+        confirmed=verify_evidence,
+        explain=explain,
+        citation=citation_reader(
+            indexed=indexed,
+            manifest_sha256=manifest_sha256,
+            confirmed=verify_evidence,
+            explain=explain,
+            instruction_only=frozenset(
+                repository for repository, guidance_only in consumers if guidance_only
+            ),
+        ),
+    )
     rows = tuple(
         row
         for repository, instruction_only in consumers
@@ -220,8 +233,7 @@ def audit_incident_fleet(
             instruction_only=instruction_only,
             manifest_sha256=manifest_sha256,
             indexed=indexed,
-            verify_evidence=verify_evidence,
-            explain=explain,
+            readers=readers,
         )
     )
     findings = invalid_evidence + tuple(

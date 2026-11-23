@@ -1,0 +1,65 @@
+---
+# Install the wrapper, its two committed lists, and the service and timer. The
+# timer is enabled but the wrapper refuses to apply until an owner's apply has
+# seeded last-applied-sha (--seed), so installing never applies anything.
+
+- name: Create the trigger library and state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ci_converge_trigger_user }}"
+    group: "{{ ci_converge_trigger_user }}"
+    mode: "0755"
+  loop:
+    - "{{ ci_converge_trigger_lib_dir }}"
+    - "{{ ci_converge_trigger_state_dir }}"
+  become: true
+
+- name: Install the trigger wrapper
+  ansible.builtin.copy:
+    src: "{{ ci_converge_trigger_src_dir }}/{{ item }}"
+    dest: "{{ ci_converge_trigger_lib_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ ci_converge_trigger_files }}"
+  become: true
+
+- name: Check whether the trigger service is already installed
+  ansible.builtin.stat:
+    path: "{{ ci_converge_trigger_unit_dir }}/ci-converge-trigger.service"
+  register: ci_converge_trigger_service_present
+  become: true
+
+- name: Install the trigger service
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('ansible.builtin.file', ci_converge_trigger_src_dir ~ '/ci-converge-trigger.service')
+      | replace('@@USER@@', ci_converge_trigger_user) }}
+    dest: "{{ ci_converge_trigger_unit_dir }}/ci-converge-trigger.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd for the CI converge trigger
+
+- name: Install the trigger timer
+  ansible.builtin.copy:
+    src: "{{ ci_converge_trigger_src_dir }}/ci-converge-trigger.timer"
+    dest: "{{ ci_converge_trigger_unit_dir }}/ci-converge-trigger.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd for the CI converge trigger
+
+- name: Publish a changed unit before arming it
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the trigger timer
+  ansible.builtin.systemd_service:
+    name: ci-converge-trigger.timer
+    enabled: true
+    state: started
+  become: true
+  when: not ansible_check_mode or ci_converge_trigger_service_present.stat.exists

@@ -79,6 +79,7 @@ def _claim_failures(
     implemented = claim.disposition == "implemented"
     # A deliberately-normal claim's evidence is the ruling it cites, not a serving build.
     normal = claim.disposition == "deliberately-normal"
+    citing = claim.cites_proving_incident
     checks = {
         "unknown-surface": claim.surface in SURFACES,
         "unknown-disposition": claim.disposition in _DISPOSITIONS,
@@ -88,6 +89,7 @@ def _claim_failures(
         "missing-reason": implemented or bool(claim.reason),
         # An instruction-only adopter's guidance claim needs no incident record.
         "missing-incident-record": not implemented
+        or citing
         or claim.repository in guidance
         or bool(
             claim.incident_item
@@ -103,6 +105,20 @@ def _claim_failures(
     return [f"{claim.repository} {claim.surface}: {name}" for name, ok in checks.items() if not ok]
 
 
+def _citation_failures(*, claim: CapabilityEvidence) -> list[str]:
+    if not claim.cites_proving_incident:
+        return []
+    return [
+        f"{claim.repository} {claim.surface}: citing-claim-omits-proving-{name}"
+        for name, value in (
+            ("repository", claim.proving_repository),
+            ("incident-item", claim.proving_incident_item),
+            ("release-build", claim.proving_release_build),
+        )
+        if not value
+    ]
+
+
 def _failures(*, claims: Sequence[CapabilityEvidence]) -> list[str]:
     text = _MANIFEST.read_text(encoding="utf-8")
     manifest = parse_manifest(source=text)
@@ -116,6 +132,7 @@ def _failures(*, claims: Sequence[CapabilityEvidence]) -> list[str]:
         found += _claim_failures(
             claim=claim, consumers=consumers, guidance=guidance, identity=identity
         )
+        found += _citation_failures(claim=claim)
     return found
 
 
@@ -240,6 +257,40 @@ def test_a_repeated_consumer_and_surface_is_refused(tmp_path: Path) -> None:
     assert _failures(claims=_load(path=repeated)) == [
         "livespec-ai/livespec-driver-claude Generated projects: duplicate"
     ]
+
+
+def test_a_citing_claim_needs_every_proving_incident_coordinate(tmp_path: Path) -> None:
+    document = json.loads(_WELLFORMED.read_text(encoding="utf-8"))
+    citation = {
+        "proving_repository": "livespec-ai/livespec-dev-tooling",
+        "proving_incident_item": "livespec-dev-tooling-proving",
+        "proving_release_build": "a" * 40,
+    }
+    document["evidence"] = [
+        {
+            **document["evidence"][1],
+            "surface": "Pre-push",
+            "release_build": "a" * 40,
+            "incident_item": "",
+            "cumulative_scope": "",
+            "normal_factory_proof": "",
+            **citation,
+        }
+    ]
+    claims = tmp_path / "claims.json"
+    claims.write_text(json.dumps(document), encoding="utf-8")
+    assert _failures(claims=_load(path=claims)) == []
+    for key, failure in (
+        ("proving_repository", "citing-claim-omits-proving-repository"),
+        ("proving_incident_item", "citing-claim-omits-proving-incident-item"),
+        ("proving_release_build", "citing-claim-omits-proving-release-build"),
+    ):
+        broken = json.loads(json.dumps(document))
+        broken["evidence"][0][key] = ""
+        claims.write_text(json.dumps(broken), encoding="utf-8")
+        assert _failures(claims=_load(path=claims)) == [
+            f"livespec-ai/livespec-driver-claude Pre-push: {failure}"
+        ]
 
 
 _SELF_RECOVERY = "v1.195.0@d4b723761270091517e83dd3ac5d5db48e9f2205+bypass-app-5656677"

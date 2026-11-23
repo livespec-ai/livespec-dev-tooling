@@ -982,6 +982,30 @@
   },
   {
     "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate outcome event carries the gate Job's queue wait and run duration",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the delegated gate client against a canned gate Job whose creationTimestamp, startTime and terminal condition are fixed and reading the emitted outcome span's attributes; livespec-dev-tooling-7g45w6 owns it.",
+    "work_item": "livespec-dev-tooling-7g45w6"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate run stopped before admission carries no queue wait or run duration",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the delegated gate client against a canned gate Job whose creationTimestamp, startTime and terminal condition are fixed and reading the emitted outcome span's attributes; livespec-dev-tooling-7g45w6 owns it.",
+    "work_item": "livespec-dev-tooling-7g45w6"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate run stopped after admission carries its queue wait and no run duration",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the delegated gate client against a canned gate Job whose creationTimestamp, startTime and terminal condition are fixed and reading the emitted outcome span's attributes; livespec-dev-tooling-7g45w6 owns it.",
+    "work_item": "livespec-dev-tooling-7g45w6"
+  },
+  {
+    "spec_root": "SPECIFICATION",
     "spec_file": "non-functional-requirements.md",
     "heading": "## Fleet manifest adopter profiles",
     "test": "tests.consumer.test_instruction_only_adopter_scenario.test_a_profile_that_is_not_exactly_instruction_only_rejects_the_whole_manifest",
@@ -1845,6 +1869,14 @@
     "test": "tests.livespec_dev_tooling.test_interactive_fleet_seat_profile.test_launcher_reads_each_committed_class_and_refuses_unknown_class",
     "reason": "Integration-tier: the committed launcher runs every committed profile class against a stand-in Claude executable; each recorded invocation carries that row's model, effort, auto-compact threshold and bounded lifetime, while an undefined class is refused before the stand-in starts.",
     "work_item": "livespec-dev-tooling-3fxp3u"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "non-functional-requirements.md",
+    "heading": "## Ledger mailbox seat channel",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this heading, driving the committed mailbox send and read commands against a stand-in ledger so a sent message is read once, a refused write prints no record id, and the hook and poller never type into a pane; livespec-dev-tooling-o767ny owns it.",
+    "work_item": "livespec-dev-tooling-o767ny"
   },
   {
     "spec_root": "SPECIFICATION",
@@ -3947,6 +3979,14 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: the incident CI entrance provisions locked pyright before it launches any member",
+    "test": "TODO",
+    "reason": "Spec-first (v264): a real test at the integration tier or above is owed for this heading, running the incident CI entrance over a plan that selects two pyright-invoking members in a repository whose lock pins pyright: the locked pyright provisioning completes exactly once before either member launches, a failed provisioning launches no member, prints one line naming the provisioning and its failure and fails the job, and a repository whose lock does not pin pyright launches its members with no provisioning attempt. livespec-dev-tooling-xdt4ue owns it.",
+    "work_item": "livespec-dev-tooling-xdt4ue"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: an incident label event's forge writes repeat only what did not take effect",
     "test": "TODO",
     "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario: the committed incident label workflow script runs under bash with the forge-read Action's command against a stub gh, and the hold create, cancel and re-run are repeated only as the scenario states. livespec-dev-tooling-levu6j owns it.",
@@ -4139,6 +4179,14 @@
     "heading": "## Scenario: a seat may type into a Claude seat's pane and is guided to prefer SendMessage",
     "test": "tests.consumer.test_claude_messaging_guards.test_the_managed_dropin_forces_remote_control_and_blocks_no_pane_input",
     "reason": "Consumer-tier: the test reads the role's committed defaults and asserts the managed drop-in forces remoteControlAtStartup and crossSessionInbound accept and wires no hook, so nothing the role installs refuses pane input. The managed CLAUDE.md guidance text is asserted by the sibling test test_the_managed_memory_prefers_sendmessage_and_allows_pane_typing, and the live behaviour is host-captured on epic livespec-dev-tooling-rlwppp."
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a seat reads a message another seat sent it through the ledger mailbox without any pane typing",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this heading, driving mailbox send then the read hook against a stand-in ledger, and the urgent poller past its dwell; livespec-dev-tooling-o767ny owns it.",
+    "work_item": "livespec-dev-tooling-o767ny"
   },
   {
     "spec_root": "SPECIFICATION",
@@ -4662,8 +4710,8 @@
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
     "heading": "## Scenario: a shared-surface claim cites another adopter's proving incident only where the shared build fully determines the surface",
-    "test": "TODO",
-    "reason": "Spec-first (v260): a real test at the integration tier or above is owed for this heading, running the incident fleet audit over a consumer whose gate readers serve a release with an implemented claim citing another adopter's authenticated proving incident: a surface the audit's committed configuration records as fully determined reads implemented, a focused-selection surface that reads adopter configuration reads unclassified naming the configuration, and a later serving release or a cited record that proved another release reads unclassified naming both releases. livespec-dev-tooling-vkkhsj owns it.",
+    "test": "tests.livespec_dev_tooling.test_incident_fleet_shared_surface_integration.test_shared_proof_classifies_only_when_the_surface_and_release_are_authenticated",
+    "reason": "Integration coverage for v260's shared-surface citation scenario (livespec-dev-tooling-vkkhsj).",
     "work_item": "livespec-dev-tooling-vkkhsj"
   },
   {
@@ -4673,5 +4721,21 @@
     "test": "TODO",
     "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the committed renderer and the committed gates-repro-cq ClusterQueue and the converge's flavor deletes; livespec-dev-tooling-nkocp5 owns it (it replaces the closed livespec-dev-tooling-caq7uh).",
     "work_item": "livespec-dev-tooling-nkocp5"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: dev host retention reports merged, aged worktrees and removes none",
+    "test": "TODO",
+    "reason": "A real test at the integration tier or above is owed for this heading: it drives the dev host retention run over a worktree root holding a merged, clean, aged worktree, one with an uncommitted change and one with an unmerged commit, then asserts the log names only the first and that all three remain. livespec-dev-tooling-yratl6 owns it.",
+    "work_item": "livespec-dev-tooling-yratl6"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: dev host retention's uv-cache ownership walk cut off by its budget carries on from the changed paths",
+    "test": "TODO",
+    "reason": "A real test at the integration tier or above is owed for this heading: it drives the dev host retention run against a uv cache too large to walk inside its budget, asserts the walk is logged as cut off with its start recorded, then writes a foreign-owned path and asserts the next run visits only changed paths, hands the path back and logs the walk as completed. livespec-dev-tooling-umy3ry owns it.",
+    "work_item": "livespec-dev-tooling-umy3ry"
   }
 ]

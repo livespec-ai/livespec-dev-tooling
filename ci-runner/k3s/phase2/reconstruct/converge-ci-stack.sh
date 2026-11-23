@@ -260,18 +260,29 @@ NODE_STATUS_SA_PREFIX="node-status-patcher-"
 declare -A SCALE_SETS=(
   [fabro-k3s]="values-fabro.yaml"
   [livespec-local-ci-k3s]="values-livespec.yaml"
+  [livespec-k3s-priority]="values-livespec-priority.yaml"
   [livespec-console-beads-k3s]="values-livespec-console-beads-fabro.yaml"
+  [livespec-console-priority]="values-livespec-console-beads-fabro-priority.yaml"
   [livespec-orchestrator-git-k3s]="values-livespec-orchestrator-git-jsonl.yaml"
+  [livespec-orch-git-priority]="values-livespec-orchestrator-git-jsonl-priority.yaml"
   [livespec-orchestrator-k3s]="values-livespec-orchestrator-beads-fabro.yaml"
+  [livespec-orch-beads-priority]="values-livespec-orchestrator-beads-fabro-priority.yaml"
   [livespec-orchestrator-master-k3s]="values-livespec-orchestrator-master.yaml"
   [livespec-dev-tooling-k3s]="values-livespec-dev-tooling.yaml"
+  [livespec-dev-priority]="values-livespec-dev-tooling-priority.yaml"
   [livespec-dev-master-k3s]="values-livespec-dev-tooling-master.yaml"
+  [livespec-dev-master-priority]="values-livespec-dev-tooling-master-priority.yaml"
   [livespec-dev-tooling-arm64-k3s]="values-livespec-dev-tooling-arm64.yaml"
   [livespec-driver-claude-k3s]="values-livespec-driver-claude.yaml"
+  [livespec-driver-claude-priority]="values-livespec-driver-claude-priority.yaml"
   [livespec-driver-codex-k3s]="values-livespec-driver-codex.yaml"
+  [livespec-driver-codex-priority]="values-livespec-driver-codex-priority.yaml"
   [livespec-driver-pi-k3s]="values-livespec-driver-pi.yaml"
+  [livespec-driver-pi-priority]="values-livespec-driver-pi-priority.yaml"
   [livespec-overseer-k3s]="values-livespec-overseer.yaml"
+  [livespec-overseer-priority]="values-livespec-overseer-priority.yaml"
   [livespec-runtime-k3s]="values-livespec-runtime.yaml"
+  [livespec-runtime-priority]="values-livespec-runtime-priority.yaml"
   [poweredge-xubuntu-k3s]="values-poweredge-xubuntu-k3s.yaml"
 )
 # Each homelab worker's host-unique set (plan homelab-k8s-worker-nodes): one
@@ -618,6 +629,11 @@ for f in "${KUEUE_DIR}"/cluster-queue-*.yaml; do
   [ -e "$f" ] || { echo "FATAL: no cluster-queue-*.yaml found in ${KUEUE_DIR}"; exit 1; }
   kubectl apply -f "$f"
 done
+# Applying the edited reproduction ClusterQueue first drops these retired
+# flavors from its quota references. `apply` never prunes objects, so remove
+# them explicitly; --ignore-not-found keeps every later converge idempotent.
+kubectl delete resourceflavor gates-repro-gamingpc-flavor gates-repro-hp-flavor \
+  --ignore-not-found --wait=false
 # The container-worker queues, whose quota is the enrolled workers' derived
 # churn slots read from the Nodes (livespec-dev-tooling-ko26ez.7).
 "${KUEUE_DIR}/converge-worker-queues.sh"

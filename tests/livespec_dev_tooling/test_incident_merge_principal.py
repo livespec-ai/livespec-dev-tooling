@@ -171,6 +171,7 @@ def test_a_verified_repair_is_rebase_merged_with_its_expected_head_and_recorded(
         f"head-sha: {_HEAD}\n"
         f"master-sha: {_MASTER}\n"
         "merged-at: 2026-11-18T09:30:15Z\n"
+        "master-run: pending until 2026-11-18T10:00:15Z (window 1800 seconds from merged-at)\n"
         "queue-ahead: 3\n"
         "endpoint: merge-async"
     ]

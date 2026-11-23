@@ -71,6 +71,26 @@ def _marker(*, repo: Path, paths: set[str], tree: str, item: str) -> str:
     _fail(detail="no legal Python comment carrier in the cumulative changed scope")
 
 
+_WORKFLOW_REFUSAL = (
+    "workflow publication requires a maintainer-attested workflow-scoped authorization "
+    "current for this attempt generation; missing for: "
+)
+
+
+def _attested_workflow_paths(*, attempt: dict[str, Any]) -> set[str]:
+    attested = attempt.get("workflow_paths")
+    values = cast("list[object]", attested) if isinstance(attested, list) else []
+    return {value for value in values if isinstance(value, str)} if values else set()
+
+
+def _workflow_scope(*, attempt: dict[str, Any], paths: set[str]) -> None:
+    """Admit a changed workflow path only when the current attempt's attested list names it."""
+    listed = _attested_workflow_paths(attempt=attempt)
+    missing = sorted(p for p in paths if p.startswith(".github/workflows/") and p not in listed)
+    if missing:
+        _fail(detail=_WORKFLOW_REFUSAL + ", ".join(missing))
+
+
 def _carrier(*, attempt: dict[str, Any]) -> dict[str, Any]:
     if "carrier" not in attempt:
         _fail(detail="current attempt publishes no canonical carrier state")
@@ -201,8 +221,7 @@ def validate_scope(
             detail="changed paths escape the canonical cumulative scope: "
             + (", ".join(escaped) or "no changed path")
         )
-    if any(path.startswith(".github/workflows/") for path in paths):
-        _fail(detail="workflow publication requires separately scoped canonical authorization")
+    _workflow_scope(attempt=attempt, paths=paths)
     if hook == "commit-msg" and (
         not extra
         or not any(

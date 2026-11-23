@@ -62,6 +62,7 @@ template:
   metadata:
     labels:
       kueue.x-k8s.io/queue-name: <REPO>-lq
+      kueue.x-k8s.io/priority-class: ci-normal
   spec:
     # Placed by `ci-runner-scheduler` (../runner-scheduler/runner-scheduler.yaml),
     # like every scale set whose runner pods request a churn slot

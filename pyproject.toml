@@ -23,7 +23,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "livespec-dev-tooling"
-version = "1.233.0"
+version = "1.236.2"
 description = "Shared enforcement-suite library for livespec-governed projects: ruff/pyright/coverage gates, AST checks, CI-alignment checks, red-green-replay discipline. Python package plus composite Actions and reusable workflows."
 requires-python = ">=3.10.16"
 authors = [
@@ -42,6 +42,9 @@ dependencies = [
     "anyio>=3.0",
     "typing-extensions>=4.0",
 ]
+
+[project.scripts]
+mailbox = "livespec_dev_tooling.mailbox_entry:main"
 
 # THE HOST-WIDE LOCAL-GATE SLOT LIMIT, delivered as a pytest plugin
 # (SPECIFICATION/non-functional-requirements.md section "Local gate concurrency
@@ -560,6 +563,9 @@ supervisor_entry_files = [
     # needs `no_write_direct` and the tolerated SystemExit main guard; it carries no broad
     # Exception catch and every host effect stays in the injected bindings.
     "livespec_dev_tooling/incident_merge_runner.py",
+    # The incident-merge route (livespec-dev-tooling-4r5rrv) is the oneshot's other entry:
+    # same stdout contract and tolerated SystemExit main guard, no broad Exception catch.
+    "livespec_dev_tooling/incident_merge_route.py",
     "livespec_dev_tooling/canonical_checks.py",
     "livespec_dev_tooling/cross_repo/ci_yaml_canonical_reconcile.py",
     "livespec_dev_tooling/cross_repo/codex_acp_pin_rewrite.py",

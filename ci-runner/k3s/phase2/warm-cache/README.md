@@ -594,13 +594,14 @@ populate-failing trigger instead of silently starving the cache.
 
 ## Operating it
 
-- **Install / re-converge**: `KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  ./install-warm-cache.sh` on the host. Re-run after adding a routed
-  repository (it re-derives the list) or changing the populator, the
-  verifier, the proxy manifest or the hook template; also re-apply
-  the `ci_converge_unit` role (`just ansible-apply ansible/ci-pool.yml --tags
-  ci_converge_unit` from the control node) so the boot copy under
-  `/usr/local/lib/ci-runner-k3s/warm-cache/` matches. Then
+- **Install / re-converge**: after adding a routed repository (it re-derives
+  the list) or changing the populator, the verifier, the proxy manifest or the
+  hook template, re-apply the `ci_converge_unit` role (`just ansible-apply
+  ansible/ci-pool.yml --tags ci_converge_unit` from the control node) so the
+  boot copy under `/usr/local/lib/ci-runner-k3s/warm-cache/` matches. Then,
+  on the host, run `sudo systemctl start converge-ci-stack.service`. This
+  root-owned boot converge applies the warm-cache manifests; it is the normal
+  apply path. Then
   `../arc/recycle-scale-set-runners.sh <scale-set>` for any scale set with
   idle runners, as after any values change. The seed itself is part of the
   provisioner manifest and is applied by the boot converge
@@ -1031,8 +1032,12 @@ after-state above). They remain the order for any new server node; a
 freshly provisioned node gets NONE of them from `ansible/ci-pool.yml` today
 (see "The half that is open").
 
-1. `KUBECONFIG=/etc/rancher/k3s/k3s.yaml registry-mirror/converge-registry-mirror.sh`,
-   then confirm from the carrier node that
+1. Re-apply the `ci_converge_unit` role (`just ansible-apply
+   ansible/ci-pool.yml --tags ci_converge_unit` from the control node) so the
+   installed tree matches this one. Then, on the server, run
+   `sudo systemctl start converge-ci-stack.service`. This root-owned boot
+   converge applies the registry-mirror cluster manifest (step 8d); it is the
+   normal apply path. Confirm from the carrier node that
    `curl -fsS http://127.0.0.1:5001/v2/` answers. Until it does, every
    pull simply falls back to ghcr and nothing is worse than today.
 2. `sudo registry-mirror/install-registry-mirror.sh <profile>` on each
@@ -1046,14 +1051,12 @@ freshly provisioned node gets NONE of them from `ansible/ci-pool.yml` today
    than 30 minutes ago, or read what the tick did afterwards with
    `sudo journalctl -u prune-sandbox-images.service --since '-10 min'`.
 4. The mirror's cluster half is rebuilt on every boot by
-   `../reconstruct/converge-ci-stack.sh` step 8d, and
-   the `ci_converge_unit` Ansible role copies `registry-mirror/`
-   into `/usr/local/lib/ci-runner-k3s/` so the boot copy carries it. Re-apply
-   that role (`just ansible-apply ansible/ci-pool.yml --tags ci_converge_unit`)
-   after step 1 so the host's boot copy matches this tree;
-   the k3s datastore is tmpfs, so anything applied by hand and not on the
-   boot path is gone at the next reboot — which is how the mirror was lost
-   at the 2026-09-09 05:08Z reboot (`livespec-dev-tooling-y1t5`).
+   `../reconstruct/converge-ci-stack.sh` step 8d, and the
+   `ci_converge_unit` Ansible role copies `registry-mirror/` into
+   `/usr/local/lib/ci-runner-k3s/` so the boot copy carries it. The k3s
+   datastore is tmpfs, so anything not on the boot path is gone at the next
+   reboot — which is how the mirror was lost at the 2026-09-09 05:08Z reboot
+   (`livespec-dev-tooling-y1t5`).
 
 ### The half that is open (closed by livespec-dev-tooling-e2gv6n)
 
