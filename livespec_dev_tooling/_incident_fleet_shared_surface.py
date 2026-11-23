@@ -24,22 +24,19 @@ class SharedSurfaceDetermination:
     adopter_configuration: tuple[str, ...]
 
 
-def shared_surface_determination(  # noqa: PLR0911 — malformed configuration forms are untrusted.
-    *, surface: str
-) -> SharedSurfaceDetermination | None:
-    """Read one released classification; malformed committed configuration is unusable."""
+def _surfaces() -> dict[str, object]:
+    """The committed surface table; empty when the configuration is unreadable."""
     try:
         document = cast("object", strict_json(text=_PATH.read_text(encoding="utf-8"), limit=None))
     except (OSError, ValueError, IncidentJsonRefusalError):
-        return None
+        return {}
     if not isinstance(document, dict):
-        return None
-    top = cast("dict[str, object]", document)
-    entries = top.get("surfaces")
-    if not isinstance(entries, dict):
-        return None
-    table = cast("dict[str, object]", entries)
-    entry = table.get(surface)
+        return {}
+    entries = cast("dict[str, object]", document).get("surfaces")
+    return cast("dict[str, object]", entries) if isinstance(entries, dict) else {}
+
+
+def _determination(*, entry: object) -> SharedSurfaceDetermination | None:
     if not isinstance(entry, dict):
         return None
     row = cast("dict[str, object]", entry)
@@ -54,3 +51,8 @@ def shared_surface_determination(  # noqa: PLR0911 — malformed configuration f
         fully_determined=fully_determined,
         adopter_configuration=tuple(cast("list[str]", values)),
     )
+
+
+def shared_surface_determination(*, surface: str) -> SharedSurfaceDetermination | None:
+    """Read one released classification; malformed committed configuration is unusable."""
+    return _determination(entry=_surfaces().get(surface))
