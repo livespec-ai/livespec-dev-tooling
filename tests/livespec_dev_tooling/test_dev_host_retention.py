@@ -1311,3 +1311,42 @@ def test_hetzner_xubuntu_gets_the_retention_from_the_committed_group_and_play() 
     play = yaml.safe_load((_ANSIBLE / "dev-host-retention.yml").read_text(encoding="utf-8"))[0]
     assert play["hosts"] == "dev_host_retention_hosts"
     assert {"role": "dev_host_retention", "tags": ["dev_host_retention"]} in play["roles"]
+
+
+def test_a_capacity_alert_uses_the_configured_ntfy_bearer_token(*, tmp_path: Path) -> None:
+    """A capacity alert must authenticate separately from the host's anonymous quota."""
+    capacity_script = _ROLE / "files" / "dev-host-capacity-check.sh"
+    assert capacity_script.is_file(), capacity_script
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    df = stub_dir / "df"
+    _ = df.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ ${@: -1} == /tmp ]]; then used=80; else used=10; fi\n"
+        "printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n/dev/test 100 1 99 %s%% /\\n' \"$used\"\n",
+        encoding="utf-8",
+    )
+    df.chmod(0o755)
+    curl = stub_dir / "curl"
+    curl_log = tmp_path / "curl.log"
+    _ = curl.write_text(
+        "#!/usr/bin/env bash\n" 'printf \'%s\\n\' "$@" >"$STUB_CURL_LOG"\n',
+        encoding="utf-8",
+    )
+    curl.chmod(0o755)
+    token_file = tmp_path / "ntfy-token"
+    token_file.write_text("test-bearer-token\n", encoding="utf-8")
+    env = os.environ | {
+        "PATH": f"{stub_dir}{os.pathsep}{os.environ['PATH']}",
+        "LIVESPEC_DEV_HOST_CAPACITY_STATE_DIR": str(tmp_path / "state"),
+        "LIVESPEC_DEV_HOST_NTFY_TOPIC": "capacity-test",
+        "LIVESPEC_DEV_HOST_NTFY_TOKEN_FILE": str(token_file),
+        "STUB_CURL_LOG": str(curl_log),
+    }
+
+    done = run_under_hang_guard(
+        ["bash", str(capacity_script)], capture_output=True, text=True, check=False, env=env
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "Authorization: Bearer test-bearer-token" in curl_log.read_text(encoding="utf-8")

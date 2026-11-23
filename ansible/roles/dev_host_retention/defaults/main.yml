@@ -58,6 +58,9 @@ dev_host_retention_capacity_check_service: livespec-dev-host-capacity-check.serv
 dev_host_retention_capacity_check_timer: livespec-dev-host-capacity-check.timer
 dev_host_retention_capacity_check_on_unit_active_sec: 15min
 dev_host_retention_capacity_check_state_dir: /var/lib/livespec-dev-host-capacity
+# Optional root-readable file containing the ntfy access token. Its contents
+# are read by the capacity checker at runtime and never enter the unit file.
+dev_host_retention_ntfy_token_file: ""
 
 # Where this host's governed checkouts live. The sweep descends ONE level and
 # takes every directory that carries a `.git`, so adding a repository to the
