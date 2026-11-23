@@ -31,6 +31,11 @@ dev_host_retention_timer_enabled: true
 # 2026-10-21 spanned months, so the vast majority of that 1.1G is evidence
 # nobody will open again.
 dev_host_retention_gate_run_days: 7
+# A report is deliberately not a reaper: sessions can return to a worktree
+# whose index is old, so the host merely names merged, clean worktrees for
+# their owners to review.
+dev_host_retention_worktree_report_days: 3
+dev_host_retention_worktree_report_threshold_gib: 40
 dev_host_retention_scratch_retention_hours: 6
 # The frequent run only reclaims aged Claude Code and pytest scratch.  Keep
 # expensive docker, uv, gate-run, marketplace-backup and bulk-dump work on the

@@ -40,6 +40,8 @@
       - dev_host_retention_randomized_delay_sec | string | length > 0
       - dev_host_retention_timeout_start_sec | string | length > 0
       - dev_host_retention_scratch_retention_hours | string | length > 0
+      - dev_host_retention_worktree_report_days | string | length > 0
+      - dev_host_retention_worktree_report_threshold_gib | string | length > 0
       - dev_host_retention_bulk_dump_dir | string | length > 0
       - dev_host_retention_bulk_dump_cap_bytes | string | length > 0
       - dev_host_retention_capacity_check_bin | string | length > 0
@@ -76,6 +78,19 @@
       dev_host_retention_gate_run_days must be a whole number of days greater than zero,
       got '{{ dev_host_retention_gate_run_days }}'
     success_msg: the gate-run retention period is a whole number of days
+
+- name: Refuse invalid worktree report periods and thresholds
+  ansible.builtin.assert:
+    that:
+      - dev_host_retention_worktree_report_days | string is match('^[0-9]+$')
+      - dev_host_retention_worktree_report_days | int > 0
+      - dev_host_retention_worktree_report_threshold_gib | string is match('^[0-9]+$')
+      - dev_host_retention_worktree_report_threshold_gib | int >= 0
+    fail_msg: >-
+      dev_host_retention_worktree_report_days must be a whole number of days greater
+      than zero and dev_host_retention_worktree_report_threshold_gib must be a
+      whole number of GiB greater than or equal to zero.
+    success_msg: the worktree report period and threshold are whole numbers
 
 - name: Refuse invalid scratch, capacity and bulk-dump values
   ansible.builtin.assert:

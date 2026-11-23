@@ -27,6 +27,11 @@ control was a human noticing (work-item `livespec-dev-tooling-fj6dm5`).
 - a gate run under a governed checkout's `tmp/gate-runs` is removed only when
   it is TERMINAL and older than the retention period; a run whose recorded
   process is alive stays, whatever its age;
+- linked worktrees below the retention user's `~/.worktrees` are only
+  **reported**, never removed, when they are clean, their index is older than
+  the report period, and their content is on the remote default branch; the
+  report includes their total and notifies `claude_ntfy_topic` when it reaches
+  the configured threshold;
 - old `/tmp/claude-<uid>/<project>/<session-id>` directories go only when no
   process carries their session id in `CLAUDE_CODE_SESSION_ID`; old pytest base
   temp entries go; a live session always stays;
@@ -72,6 +77,8 @@ with no installed runner is SKIPPED and says so.
 | variable | default | what it is |
 | --- | --- | --- |
 | `dev_host_retention_gate_run_days` | `7` | **THE GATE-RUN RETENTION PERIOD**, in whole days: how long a terminal gate run's evidence survives, anchored on the run's own `started_at` |
+| `dev_host_retention_worktree_report_days` | `3` | whole days since a linked worktree's index was last written before a clean, merged worktree beneath `~/.worktrees` is named in the report; reporting never removes it |
+| `dev_host_retention_worktree_report_threshold_gib` | `40` | total size in GiB at or above which the worktree report sends one ntfy notification to `claude_ntfy_topic` |
 | `dev_host_retention_scratch_retention_hours` | `6` | how long Claude Code and pytest scratch must be untouched before removal |
 | `dev_host_retention_scratch_on_unit_active_sec` | `2h` | cadence of the scratch-only Claude Code and pytest retention timer |
 | `dev_host_retention_root_threshold_percent` | `85` | root-filesystem used-share alert threshold |
