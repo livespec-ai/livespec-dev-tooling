@@ -49,9 +49,14 @@ the rendered unit now does the same job. The role deletes it in the same
 converge that renders the unit, so no pass ever runs without the tenant
 wrapper. On the dev host, role
 `dev_host_memory_bounds` also places
-`reconcile-runs.service.d/50-livespec-memory-bounds.conf`. That file sorts later,
-so its memory bounds win over the unit text's `MemoryHigh` and `MemoryMax`. The
-two roles write different files and leave each other's alone.
+`reconcile-runs.service.d/50-livespec-memory-bounds.conf`. That drop-in sets only
+`MemorySwapMax=0` and `OOMScoreAdjust=500` on `reconcile-runs.service`, and it
+takes effect because a drop-in overrides the unit text. It shares no key with this
+role's `10-reconcile-runs-role.conf`, so the two roles write different files and
+leave each other's alone. Every tenant's reconcile-runs service, the dev host's
+`reconcile-runs.service` included, takes its `MemoryHigh`, `MemoryMax` and
+`CPUWeight` from livespec-orchestrator-beads-fabro's committed unit text. Only the
+dev host's `reconcile-runs.service` carries the `dev_host_memory_bounds` drop-in.
 
 ## The tenant credential wrapper, read at run time
 
