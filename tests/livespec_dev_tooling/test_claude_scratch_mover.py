@@ -310,17 +310,21 @@ def test_an_absent_ram_root_is_nothing_to_move(
     assert _events(capsys)[0]["reason"] == "ram-root-absent"
 
 
-def test_an_existing_destination_is_never_overwritten(
+def test_a_destination_clash_is_a_single_standing_state_not_a_failed_pass(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     ram, disk, proc = _roots(tmp_path)
     dead = _session(ram=ram, sid=_DEAD)
     (disk / _PROJECT / _DEAD).mkdir(parents=True)
-    assert _run(config=_config(ram=ram, disk=disk, proc=proc, tmp_path=tmp_path), proc=proc) == 1
-    assert dead.exists()
-    assert {"error": "destination-exists", "event": "move-failed", "path": str(dead)} in _events(
-        capsys
-    )
+
+    assert _run(config=_config(ram=ram, disk=disk, proc=proc, tmp_path=tmp_path), proc=proc) == 0
+    events = _events(capsys)
+    assert dead.is_dir()
+    assert [event for event in events if event["event"] == "destination-exists"] == [
+        {"event": "destination-exists", "path": str(dead)}
+    ]
+    assert not [event for event in events if event["event"] == "move-failed"]
+    assert events[-1] == {"apply": True, "event": "pass-complete", "failed": 0, "moved": 0}
 
 
 def test_a_move_that_fails_leaves_the_source_and_fails_the_pass(
