@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from livespec_dev_tooling._incident_enablement_fence import controller_fence
@@ -24,6 +25,7 @@ from livespec_dev_tooling.incident_observer_admission import (
 )
 from livespec_dev_tooling.incident_observer_arm_clear import ObserverArmClear
 from livespec_dev_tooling.incident_observer_authority import CurrentAuthorityReader
+from livespec_dev_tooling.incident_observer_bind_run import locate_bind_run
 from livespec_dev_tooling.incident_observer_evidence import FocusedEvidenceGate
 from livespec_dev_tooling.incident_observer_forge import MergedRunVerifier
 from livespec_dev_tooling.incident_observer_invalidation import ObserverCiInvalidation
@@ -52,51 +54,69 @@ class ObserverControl:
             return ObserverArmClear(installation=settings).execute(payload=payload)
         if path == "/arm":
             return self._arm(payload=payload)
-        if path == "/bind" and set(payload) == {"repository", "head_sha", "run_id"}:
-            with repository_lock(
-                directory=settings.state, repository=settings.repository
-            ) as record_path:
-                arm = read_observer_arm(record=load_record(path=record_path))
-            if (
-                arm is None
-                or type(payload["run_id"]) is not int
-                or payload["run_id"] <= 0
-                or not isinstance(payload["head_sha"], str)
-            ):
-                return {
-                    "status": "refused",
-                    "reason": f"retained arm and exact {settings.target_branch} run required",
-                }
-            # The configured target branch is the only branch a binding can name.
-            registration = ObserverRegistration(
-                repository=arm.repository,
-                incident_item_id=arm.incident_item_id,
-                attempt_id=arm.attempt_id,
-                operation_id=arm.operation_id,
-                generation=arm.generation,
-                owner=arm.owner,
-                phase=arm.phase,
-                head_sha=payload["head_sha"],
-                run_id=payload["run_id"],
-                required_jobs=arm.required_jobs,
-                controller_release=arm.controller_release,
-                controller_revision=arm.controller_revision,
-                candidate_revision=arm.head_sha,
-                authority_receipt=arm.authority_receipt,
-                branch=settings.target_branch,
-            )
-            return asdict(
-                bind_after_merge(
-                    directory=settings.state,
-                    arm=arm,
-                    registration=registration,
-                    verify_merged_run=MergedRunVerifier(
-                        read=ForgeReads.installed(installation=settings),
-                        target_branch=settings.target_branch,
-                    ),
-                )
-            )
+        if path == "/bind" and set(payload) in (
+            {"repository", "head_sha", "run_id"},
+            {"repository", "head_sha"},
+        ):
+            return self._bind(payload=payload)
         return {"status": "refused", "reason": "unknown or malformed control operation"}
+
+    def _bind(self, *, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.installation
+        with repository_lock(
+            directory=settings.state, repository=settings.repository
+        ) as record_path:
+            arm = read_observer_arm(record=load_record(path=record_path))
+        reads = ForgeReads.installed(installation=settings)
+        run_id = payload.get("run_id")
+        if arm is not None and "run_id" not in payload and isinstance(payload["head_sha"], str):
+            located = locate_bind_run(
+                read=reads,
+                arm=arm,
+                head_sha=payload["head_sha"],
+                now=datetime.now(tz=timezone.utc),
+            )
+            if located.kind != "found":
+                return {"status": located.kind, "reason": located.detail}
+            run_id = located.run_id
+        if (
+            arm is None
+            or type(run_id) is not int
+            or run_id <= 0
+            or not isinstance(payload["head_sha"], str)
+        ):
+            return {
+                "status": "refused",
+                "reason": f"retained arm and exact {settings.target_branch} run required",
+            }
+        # The configured target branch is the only branch a binding can name.
+        registration = ObserverRegistration(
+            repository=arm.repository,
+            incident_item_id=arm.incident_item_id,
+            attempt_id=arm.attempt_id,
+            operation_id=arm.operation_id,
+            generation=arm.generation,
+            owner=arm.owner,
+            phase=arm.phase,
+            head_sha=payload["head_sha"],
+            run_id=run_id,
+            required_jobs=arm.required_jobs,
+            controller_release=arm.controller_release,
+            controller_revision=arm.controller_revision,
+            candidate_revision=arm.head_sha,
+            authority_receipt=arm.authority_receipt,
+            branch=settings.target_branch,
+        )
+        return asdict(
+            bind_after_merge(
+                directory=settings.state,
+                arm=arm,
+                registration=registration,
+                verify_merged_run=MergedRunVerifier(
+                    read=reads, target_branch=settings.target_branch
+                ),
+            )
+        )
 
     def _arm(self, *, payload: dict[str, Any]) -> dict[str, Any]:
         settings = self.installation
