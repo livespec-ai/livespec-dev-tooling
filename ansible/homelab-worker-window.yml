@@ -27,7 +27,10 @@
 #             owns is on the node: the revert then ends INCOMPLETE, fails the
 #             play and leaves gates-cq alone. Move the work (k3s-window-drain.yml
 #             action evacuate) and run revert again.
-#   remove    depart the node only
+#   remove    depart the node only (DELETES the Node)
+#   stop      take the worker out of service and KEEP its Node: the node must be cordoned
+#             and carry no pod a DaemonSet does not own; stops its kubelet and container
+#   start     the reversal of stop: start the container and kubelet (uncordon separately)
 #
 # join refuses without a snapshot taken for this window (younger than 24 h).
 # An empty confirmation is a no-op; a non-empty one naming another host, node or
