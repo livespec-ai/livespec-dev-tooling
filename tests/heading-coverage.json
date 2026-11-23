@@ -4721,5 +4721,13 @@
     "test": "TODO",
     "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the committed renderer and the committed gates-repro-cq ClusterQueue and the converge's flavor deletes; livespec-dev-tooling-nkocp5 owns it (it replaces the closed livespec-dev-tooling-caq7uh).",
     "work_item": "livespec-dev-tooling-nkocp5"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: dev host retention reports merged, aged worktrees and removes none",
+    "test": "TODO",
+    "reason": "A real test at the integration tier or above is owed for this heading: it drives the dev host retention run over a worktree root holding a merged, clean, aged worktree, one with an uncommitted change and one with an unmerged commit, then asserts the log names only the first and that all three remain. livespec-dev-tooling-yratl6 owns it.",
+    "work_item": "livespec-dev-tooling-yratl6"
   }
 ]

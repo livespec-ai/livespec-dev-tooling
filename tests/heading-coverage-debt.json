@@ -1815,6 +1815,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: dev host retention reports merged, aged worktrees and removes none",
+    "work_item": "livespec-dev-tooling-yratl6",
+    "first_seen": "2026-11-23"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: dev host retention still cleans aged terminal gate runs from every readable checkout",
     "work_item": "livespec-dev-tooling-jm2tkj",
     "first_seen": "2026-11-18"
