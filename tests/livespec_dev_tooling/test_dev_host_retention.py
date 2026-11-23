@@ -43,6 +43,7 @@ the script the armed unit runs.
 
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import pwd
@@ -1388,3 +1389,34 @@ def test_a_run_reports_only_clean_merged_aged_worktrees_and_removes_none(*, tmp_
     assert str(unmerged) not in report, report
     assert "worktree retention total" in report, report
     assert clean.is_dir() and dirty.is_dir() and unmerged.is_dir(), report
+
+
+def test_the_worktree_report_scans_the_retention_users_home_not_the_callers(
+    *, tmp_path: Path
+) -> None:
+    """The unit runs as root, so the report must not default to root's ``$HOME``."""
+    env = _base_env(tmp_path=tmp_path)
+    home, clean, _dirty, _unmerged = _worktree_report_fixture(tmp_path=tmp_path, env=env)
+    user = getpass.getuser()
+    stub_dir = tmp_path / "getent-stub"
+    stub_dir.mkdir()
+    getent = stub_dir / "getent"
+    _ = getent.write_text(
+        f'#!/bin/sh\nprintf \'%s:x:1000:1000::%s:/bin/sh\\n\' "$2" "{home}"\n', encoding="utf-8"
+    )
+    getent.chmod(0o755)
+
+    done = _retain(
+        env=env
+        | {
+            "PATH": f"{stub_dir}{os.pathsep}{env['PATH']}",
+            "HOME": str(tmp_path / "callers-home"),
+            "LIVESPEC_DEV_HOST_RETENTION_USER": user,
+            "LIVESPEC_DEV_HOST_WORKTREE_REPORT_DAYS": "7",
+            "LIVESPEC_DEV_HOST_WORKTREE_REPORT_THRESHOLD_GIB": "999999",
+        }
+    )
+
+    report = done.stdout + done.stderr
+    assert done.returncode == 0, report
+    assert str(clean) in report, report
