@@ -12,6 +12,7 @@ from livespec_dev_tooling._gate_host_authority import (
     run_host_authority_members,
 )
 from livespec_dev_tooling._gate_member_report import passed_members
+from livespec_dev_tooling._gate_outcome_timing import gate_timing_seconds
 from livespec_dev_tooling._gate_remote_assembly import (
     declared_gate_check_suite,
     refuses_declaration,
@@ -20,14 +21,20 @@ from livespec_dev_tooling._pre_commit_delegate_evidence import (
     host_holds_tree,
     record_delegated_evidence,
 )
+from livespec_dev_tooling._pre_commit_delegate_remote import run_remote
 from livespec_dev_tooling._pre_push_evidence import clear_for_worktree
 from livespec_dev_tooling.config import ConfigParseError, load_delegated_pre_commit
 from livespec_dev_tooling.gate_credential import gates_kubeconfig_readable
+from livespec_dev_tooling.gate_outcome_telemetry import (
+    GATE_OUTCOME_NO_VERDICT,
+    emit_gate_outcome,
+)
 from livespec_dev_tooling.gate_remote_delegate import gate_remote_request, resolve_renderer
 from livespec_dev_tooling.gate_remote_invocation import default_gate_command_runner
 from livespec_dev_tooling.gate_remote_verdict import (
     GATE_FAILED,
     GATE_PASSED,
+    GateVerdict,
     run_gated_push,
 )
 from livespec_dev_tooling.incident_gate_entry import IncidentEntrance
@@ -62,21 +69,39 @@ def run_pre_commit(*, repo_root: Path) -> PreCommitVerdict:
     if not enabled:
         return PreCommitVerdict(local=True, reason="delegated_pre_commit is not enabled")
     if not gates_kubeconfig_readable():
-        return PreCommitVerdict(local=True, reason="gates kubeconfig is not readable")
+        return _report_outcome(
+            verdict=PreCommitVerdict(
+                local=True,
+                reason="gates kubeconfig is not readable",
+            ),
+            outcome=GATE_OUTCOME_NO_VERDICT,
+            repository=_repository_name(repo_root=repo_root),
+        )
     tree_hash = _staged_tree_hash(repo_root=repo_root)
     if not tree_hash:
-        return PreCommitVerdict(
-            local=True,
-            reason="the staged tree could not be read, so the pre-commit aggregate gates locally",
+        return _report_outcome(
+            verdict=PreCommitVerdict(
+                local=True,
+                reason=(
+                    "the staged tree could not be read, so the pre-commit aggregate gates locally"
+                ),
+            ),
+            outcome=GATE_OUTCOME_NO_VERDICT,
+            repository=_repository_name(repo_root=repo_root),
         )
     check_suite = _pre_commit_check_suite(repo_root=repo_root)
     if check_suite is None:
-        return PreCommitVerdict(
-            local=True,
-            reason=(
-                "the gate check suite could not be read, so the pre-commit aggregate gates locally"
+        return _report_outcome(
+            verdict=PreCommitVerdict(
+                local=True,
+                reason=(
+                    "the gate check suite could not be read, so the pre-commit aggregate "
+                    "gates locally"
+                ),
+                tree_hash=tree_hash,
             ),
-            tree_hash=tree_hash,
+            outcome=GATE_OUTCOME_NO_VERDICT,
+            repository=_repository_name(repo_root=repo_root),
         )
     return _run_remote(repo_root=repo_root, tree_hash=tree_hash, check_suite=check_suite)
 
@@ -157,109 +182,81 @@ def _pre_commit_check_suite(*, repo_root: Path) -> tuple[str, ...] | None:
     return (*declared.unwrap()[:-1], _GATED_TREE_CHECK)
 
 
-def _unbuilt_verdict(*, refused: bool, detail: str, tree_hash: str) -> PreCommitVerdict:
-    """The verdict for a gate request that could not be assembled.
+def _repository_name(*, repo_root: Path) -> str | None:
+    """Name the repository whose delegated pre-commit run was selected.
 
-    An unusable resource declaration rejects the committed configuration, so the
-    commit is refused naming the key; any other assembly failure is a missing
-    cluster verdict, and the aggregate gates locally.
+    The hook has already been invoked for this checkout when it gets this far,
+    so its root name is known even if assembly fails before a gate request can
+    determine the mirror URL.  Empty names are omitted like every other
+    undetermined telemetry attribute.
     """
-    return PreCommitVerdict(
-        local=not refused,
-        reason=(
-            f"the commit is refused, not gated locally: unusable gate Job resources: {detail}"
-            if refused
-            else f"the gate Job could not be submitted: {detail}"
-        ),
-        tree_hash=tree_hash,
-        exit_status=1 if refused else None,
+    return repo_root.name or None
+
+
+def _report_outcome(
+    *,
+    verdict: PreCommitVerdict,
+    outcome: str,
+    repository: str | None,
+    remote: GateVerdict | None = None,
+) -> PreCommitVerdict:
+    """Best-effort report exactly one selected pre-commit delegation outcome.
+
+    `remote` is the gate Job's own verdict when one was obtained; its Job
+    timestamps give the span the queue wait and run duration under the rules
+    the pre-push gate's Telemetry states, and its no-verdict fields ride along.
+    """
+    queue_wait_seconds, duration_seconds = (
+        (None, None)
+        if remote is None
+        else gate_timing_seconds(
+            created_at=remote.job_created_at,
+            admitted_at=remote.job_started_at,
+            terminal_at=remote.job_terminal_at,
+        )
     )
+    emit_gate_outcome(
+        outcome=outcome,
+        repository=repository,
+        tree_hash=verdict.tree_hash,
+        job_name=verdict.job_name,
+        queue_wait_seconds=queue_wait_seconds,
+        duration_seconds=duration_seconds,
+        no_verdict_cause=None if remote is None else remote.no_verdict_cause,
+        refusal_step=None if remote is None else remote.refusal_step,
+        stage="pre-commit",
+    )
+    return verdict
 
 
 def _run_remote(
     *, repo_root: Path, tree_hash: str, check_suite: tuple[str, ...]
 ) -> PreCommitVerdict:
     """Run the aggregate remotely and accept only a matching staged-tree verdict."""
-    from returns.result import Failure
-
-    built = gate_remote_request(
+    return run_remote(
         repo_root=repo_root,
-        renderer=resolve_renderer(repo_root=repo_root),
-        runner=default_gate_command_runner,
         tree_hash=tree_hash,
         check_suite=check_suite,
-    )
-    if isinstance(built, Failure):
-        return _unbuilt_verdict(
-            refused=refuses_declaration(failure=built.failure()),
-            detail=built.failure().detail,
-            tree_hash=tree_hash,
-        )
-    source = _staged_commit(repo_root=repo_root, tree_hash=tree_hash)
-    if not source:
-        return PreCommitVerdict(
-            local=True,
-            reason=(
-                "the staged tree could not be committed for the gate, so the aggregate "
-                "gates locally"
-            ),
-            tree_hash=tree_hash,
-        )
-    request = replace(built.unwrap(), source_ref=source, capture_output=True)
-    remote = run_gated_push(request=request, runner=default_gate_command_runner)
-    if remote.tree_hash != tree_hash:
-        return PreCommitVerdict(
-            local=True,
-            # The client's own detail is carried, not replaced: a wait ended by a
-            # signal says there that it was terminated and names the Job it deleted.
-            reason=(
-                "the gate Job did not return a verdict for the staged tree, so the aggregate "
-                f"gates locally: {remote.detail}"
-            ),
-            job_name=remote.job_name,
-            tree_hash=tree_hash,
-        )
-    if remote.state == GATE_PASSED:
-        host_unchanged = host_holds_tree(repo_root=repo_root, tree_hash=tree_hash)
-        joined = host_authority_decision(
-            verdict=remote,
-            ran=run_host_authority_members(
-                repo_root=repo_root, tree_hash=tree_hash, runner=default_gate_command_runner
-            ),
-        )
-        return PreCommitVerdict(
-            local=False,
-            reason=joined.detail,
-            job_name=joined.job_name,
-            tree_hash=tree_hash,
-            exit_status=0 if joined.state == GATE_PASSED else 1,
-            output_checksum=joined.output_checksum,
-            full_aggregate=_staged_tree_selects_full_aggregate(
-                repo_root=repo_root, tree_hash=tree_hash
-            ),
-            members_passed=(
-                None
-                if joined.member_verdicts is None
-                else passed_members(report=joined.member_verdicts)
-            ),
-            host_unchanged=host_unchanged,
-        )
-    if remote.state == GATE_FAILED:
-        return PreCommitVerdict(
-            local=False,
-            reason=remote.detail,
-            job_name=remote.job_name,
-            tree_hash=tree_hash,
-            exit_status=1,
-            output_checksum=remote.output_checksum,
-        )
-    return PreCommitVerdict(
-        local=True,
-        reason=(
-            "the gate Job reached no verdict for the staged tree, so the aggregate gates locally"
-        ),
-        job_name=remote.job_name,
-        tree_hash=tree_hash,
+        build=gate_remote_request,
+        renderer=resolve_renderer,
+        runner=default_gate_command_runner,
+        run_gate=run_gated_push,
+        replace_request=replace,
+        staged_commit=_staged_commit,
+        refuses_declaration=refuses_declaration,
+        report=_report_outcome,
+        repository_name=_repository_name,
+        passed_state=GATE_PASSED,
+        failed_state=GATE_FAILED,
+        passed_outcome="passed",
+        failed_outcome="failed-tree",
+        no_verdict=GATE_OUTCOME_NO_VERDICT,
+        holds_tree=host_holds_tree,
+        authority_decision=host_authority_decision,
+        authority_members=run_host_authority_members,
+        passed_members=passed_members,
+        full_aggregate=_staged_tree_selects_full_aggregate,
+        verdict_type=PreCommitVerdict,
     )
 
 

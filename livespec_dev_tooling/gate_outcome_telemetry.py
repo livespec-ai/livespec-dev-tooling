@@ -98,6 +98,7 @@ def build_span_payload(  # noqa: PLR0913 — OTLP fields are independent optiona
     duration_seconds: float | None = None,
     no_verdict_cause: str | None = None,
     refusal_step: str | None = None,
+    stage: str | None = None,
 ) -> dict[str, object]:
     """Build the OTLP payload for EXACTLY ONE span describing one decided run.
 
@@ -117,6 +118,7 @@ def build_span_payload(  # noqa: PLR0913 — OTLP fields are independent optiona
         ("livespec.gate.job_name", job_name),
         ("livespec.gate.no_verdict_cause", no_verdict_cause),
         ("livespec.gate.refusal_step", refusal_step),
+        ("livespec.gate.stage", stage),
     )
     attributes: list[dict[str, object]] = [
         {"key": key, "value": {"stringValue": value}}
@@ -190,6 +192,7 @@ def emit_gate_outcome(  # noqa: PLR0913 — mirrors the independently optional O
     duration_seconds: float | None = None,
     no_verdict_cause: str | None = None,
     refusal_step: str | None = None,
+    stage: str | None = None,
 ) -> None:
     """Emit one delegated gate run's outcome event to the configured receiver."""
     endpoint = (os.environ.get(ENDPOINT_ENV) or "").strip() or DEFAULT_ENDPOINT
@@ -204,6 +207,7 @@ def emit_gate_outcome(  # noqa: PLR0913 — mirrors the independently optional O
             duration_seconds=duration_seconds,
             no_verdict_cause=no_verdict_cause,
             refusal_step=refusal_step,
+            stage=stage,
         ),
     )
 
