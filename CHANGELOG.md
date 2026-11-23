@@ -58,6 +58,21 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.236.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.235.1...v1.236.0) (2026-11-23)
+
+
+### Features
+
+* **incident-merge:** a committed, fenced route starts the merge runner for an armed green repair (livespec-dev-tooling-4r5rrv) ([f32f586](https://github.com/livespec-ai/livespec-dev-tooling/commit/f32f586da9e6f8470989dc49bd588736cfca4254))
+* **incident-observer:** an operator clears a retired chain's pre-merge arm (livespec-dev-tooling-s7yiut) ([6639e5d](https://github.com/livespec-ai/livespec-dev-tooling/commit/6639e5dc3cc31716c0a10cf7e360845e09f403b5))
+
+
+### Bug Fixes
+
+* a merge-async merge's master push run is judged pending until a thirty-minute window has passed, never absent early (livespec-dev-tooling-bm5bb5) ([d05b384](https://github.com/livespec-ai/livespec-dev-tooling/commit/d05b384a8160a87e97689cf3327942a09cfc36d3))
+* CI priority record omits closed or absent directly ranked items (livespec-dev-tooling-qpvoi2) ([6817237](https://github.com/livespec-ai/livespec-dev-tooling/commit/6817237f15f06cc2f562005adc371c74672473c8))
+* **ci-runner:** the master lanes lend their reserved churn slots so merge-queue work is not gated behind idle quota (R301) ([8169694](https://github.com/livespec-ai/livespec-dev-tooling/commit/8169694555099d3cdaf70c836f0a9751eb3b346a))
+
 ## [1.235.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.235.0...v1.235.1) (2026-11-22)
 
 

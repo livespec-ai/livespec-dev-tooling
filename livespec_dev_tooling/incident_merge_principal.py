@@ -45,9 +45,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol, cast
 
+from livespec_dev_tooling.incident_master_run import MASTER_RUN_WINDOW_SECONDS
 from livespec_dev_tooling.incident_merge_authority import (
     MergeChainReader,
     decide,
@@ -316,7 +317,11 @@ def merge_incident_repair(  # noqa: PLR0913 — every collaborator is an injecte
     master = _confirm(forge=forge, pr_number=pr_number, sleep=sleep)
     if isinstance(master, Refused):
         return refused(outcome=master)
-    merged_at = clock().strftime(_UNIVERSAL_TIME)
+    merged_instant = clock()
+    merged_at = merged_instant.strftime(_UNIVERSAL_TIME)
+    run_deadline = (merged_instant + timedelta(seconds=MASTER_RUN_WINDOW_SECONDS)).strftime(
+        _UNIVERSAL_TIME
+    )
     record(
         incident_id=incident_id,
         text=_text(
@@ -327,6 +332,11 @@ def merge_incident_repair(  # noqa: PLR0913 — every collaborator is an injecte
                 ("head-sha", pull.head_sha),
                 ("master-sha", master),
                 ("merged-at", merged_at),
+                (
+                    "master-run",
+                    f"pending until {run_deadline}"
+                    f" (window {MASTER_RUN_WINDOW_SECONDS} seconds from merged-at)",
+                ),
                 ("queue-ahead", ahead_text),
                 ("endpoint", endpoint),
             ]
