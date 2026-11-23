@@ -105,6 +105,9 @@ class GateStepFailed:
     argv: tuple[str, ...]
     returncode: int | None
     detail: str
+    job_name: str | None = None
+    job_created_at: str | None = None
+    job_started_at: str | None = None
 
 
 GateCommandOutcome: TypeAlias = Result[GateCommandResult, GateCommandNotRun]

@@ -79,21 +79,24 @@ namespace growth weeks later.
 
 from __future__ import annotations
 
-import hashlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from livespec_dev_tooling._gate_abandoned_job_record import abandon_gate_job, with_record_path
+from livespec_dev_tooling._gate_abandoned_job_record import with_record_path
+from livespec_dev_tooling._gate_cluster_commands import delete_abandoned_job, kubectl
+from livespec_dev_tooling._gate_log_output import shown_output_checksum
 from livespec_dev_tooling._gate_member_report import parse_member_report
+from livespec_dev_tooling._gate_mirror_push import mirror_push
 from livespec_dev_tooling._gate_queue_coverage import uncovered_requests
 from livespec_dev_tooling._gate_remote_failed_pod import FailedPod, read_failed_pod
+from livespec_dev_tooling._gate_run_observation import GateTimingObservations
+from livespec_dev_tooling._gate_tree_read import head_tree_hash
 from livespec_dev_tooling._gate_wait_interrupt import (
     GateWaitInterruptedError,
     interrupted_wait_failure,
     wait_with_interrupt_cleanup,
 )
-from livespec_dev_tooling.gate_credential import with_gates_kubeconfig
 from livespec_dev_tooling.gate_private_sibling_token import (
     create_private_sibling_token_secret,
 )
@@ -112,8 +115,10 @@ from livespec_dev_tooling.gate_remote_invocation import (
 from livespec_dev_tooling.gate_remote_job_status import (
     COMPLETE_CONDITION,
     created_job_name,
+    created_job_time,
     created_job_tree_hash,
     reported_time,
+    terminal_transition_time,
 )
 from livespec_dev_tooling.gate_remote_request import GATE_NAMESPACE, GateRunRequest
 
@@ -152,9 +157,7 @@ GATE_BASE_REF_SUFFIX = ".base"
 # The hooks directory a mirror push runs with. `/dev/null` is not a DIRECTORY,
 # so git finds no hook file beneath it and runs none — measured with git 2.43.0:
 # a plain push fires `pre-push`, this form does not.
-_NO_HOOKS_PATH = "/dev/null"
 
-_READ_TREE_STEP = "read-tree-hash"
 _PUSH_STEP = "push-gate-ref"
 _SUBMIT_STEP = "submit-gate-job"
 _STREAM_STEP = "stream-gate-logs"
@@ -220,8 +223,10 @@ class GateRunOutcome:
     terminal_state: str
     logs_returncode: int
     failure_message: str = ""
+    created_at: str = ""
     started_at: str = ""
     finished_at: str = ""
+    terminal_at: str = ""
     output_checksum: str = ""
     reported_tree_hash: str = ""
     member_verdicts: tuple[tuple[str, str], ...] | None = None
@@ -250,7 +255,7 @@ def run_gate(
     """
     tree_hash = request.tree_hash
     if not tree_hash:
-        tree = _head_tree_hash(request=request, runner=runner)
+        tree = head_tree_hash(request=request, runner=runner)
         if isinstance(tree, Failure):
             return Failure(tree.failure())
         tree_hash = tree.unwrap()
@@ -261,7 +266,7 @@ def run_gate(
     if refused is not None:
         return Failure(refused)
     push_argv = [
-        *_mirror_push(),
+        *mirror_push(),
         # `--atomic` is what makes the two refs ONE FACT. The mirror is created
         # empty and holds only what a gate push puts there, so the diff base is
         # not something the pod can find on its own; a partial push would land
@@ -291,54 +296,6 @@ def run_gate(
     return gated
 
 
-def _mirror_push() -> list[str]:
-    """The HOOKLESS `git push` prefix every mirror push here shares.
-
-    The hooks are disabled because this client is reached from a repository's own
-    `pre-push` hook, and git fires that hook for every push — so a mirror push
-    spelled with hooks live re-enters the hook, which delegates again, which
-    pushes again, unbounded. It hangs rather than erroring: measured on the VPS
-    2026-10-12, a worktree push sat 48 minutes and was refused NO_VERDICT.
-
-    Built HERE, where a mirror push is built, so no step can be spelled without
-    it — the same reason `_kubectl` below is the only place a cluster command is
-    assembled. Only THIS invocation is hookless; the user's own push, which is
-    the one a `pre-push` hook exists to gate, is untouched.
-    """
-    return ["git", "-c", f"core.hooksPath={_NO_HOOKS_PATH}", "push"]
-
-
-def _kubectl(*, request: GateRunRequest) -> list[str]:
-    """The namespaced `kubectl` prefix every cluster command here shares.
-
-    THROUGH `with-gates-kubeconfig`, and that is not a convenience. A bare
-    `kubectl` authenticates with whatever `KUBECONFIG` the pushing user's
-    environment carries — on the VPS login user, none at all — and it never
-    reaches the wrapper's refresh-on-rejection path, so the first gate after a
-    control-plane boot fails 401 with nothing to fix it. The prefix is applied
-    HERE, where every cluster command is built, so no step can be spelled
-    without it.
-    """
-    return with_gates_kubeconfig(argv=["kubectl", "--namespace", request.namespace])
-
-
-def _head_tree_hash(
-    *, request: GateRunRequest, runner: GateCommandRunner
-) -> Result[str, GateStepFailed]:
-    """Read the tree the gate will run against, through the seam.
-
-    Deliberately NOT `green_token`'s own reader: that one calls `subprocess`
-    directly with `check=True`, so borrowing it would put a raise and an
-    unstubbable command in the middle of a client whose whole testability rests
-    on the seam.
-    """
-    argv = ["git", "rev-parse", "HEAD^{tree}"]
-    lifted = require_success(
-        step=_READ_TREE_STEP, argv=argv, outcome=runner(argv=argv, cwd=request.repo_root)
-    )
-    return lifted.map(lambda ran: ran.stdout.strip())
-
-
 def _delete_gate_ref(*, request: GateRunRequest, runner: GateCommandRunner) -> StepOutcome:
     """Collect the refs this run created — the first of the two collectors.
 
@@ -361,7 +318,7 @@ def _delete_gate_ref(*, request: GateRunRequest, runner: GateCommandRunner) -> S
     it is harder to see — the tree has already been gated by then.
     """
     argv = [
-        *_mirror_push(),
+        *mirror_push(),
         "--delete",
         request.mirror_url,
         request.gate_ref,
@@ -372,16 +329,7 @@ def _delete_gate_ref(*, request: GateRunRequest, runner: GateCommandRunner) -> S
     )
 
 
-def _delete_abandoned_gate_job(
-    *, request: GateRunRequest, runner: GateCommandRunner, job_name: str
-) -> tuple[StepOutcome, Path]:
-    """Save the Job's last log lines, then delete it; return both results (yrjatv)."""
-    return abandon_gate_job(
-        request=request, runner=runner, job_name=job_name, kubectl=_kubectl(request=request)
-    )
-
-
-def _gate_a_pushed_tree(
+def _gate_a_pushed_tree(  # noqa: PLR0915 — lifecycle branches must preserve cleanup ordering.
     *,
     request: GateRunRequest,
     runner: GateCommandRunner,
@@ -417,7 +365,7 @@ def _gate_a_pushed_tree(
     until it ends, which is a known and separable improvement rather than a
     property anything here depends on.
     """
-    submit_argv = [*_kubectl(request=request), "create", "--output", "json", "--filename", "-"]
+    submit_argv = [*kubectl(request=request), "create", "--output", "json", "--filename", "-"]
     submitted = require_success(
         step=_SUBMIT_STEP,
         argv=submit_argv,
@@ -432,6 +380,8 @@ def _gate_a_pushed_tree(
         return Failure(named.failure()), False
     job_name = named.unwrap()
     reported_tree = created_job_tree_hash(payload=submitted.unwrap().stdout)
+    created_at = created_job_time(payload=submitted.unwrap().stdout)
+    observed = GateTimingObservations(job_name=job_name, created_at=created_at)
     # ONLY when a token was actually minted, which is the state of a push whose
     # repository names a PRIVATE cross-repo sibling and of no other. The step is
     # AFTER the submit because the Secret is owner-referenced to the Job the
@@ -440,22 +390,22 @@ def _gate_a_pushed_tree(
     if request.private_sibling_token:
         delivered = create_private_sibling_token_secret(
             request=request,
-            kubectl=_kubectl(request=request),
+            kubectl=kubectl(request=request),
             runner=runner,
             job_name=job_name,
             job_payload=submitted.unwrap().stdout,
         )
         if isinstance(delivered, Failure):
-            deleted, saved = _delete_abandoned_gate_job(
-                request=request, runner=runner, job_name=job_name
-            )
+            deleted, saved = delete_abandoned_job(request=request, runner=runner, job_name=job_name)
             report_gate_cleanup_failure(job_name=job_name, outcome=deleted)
-            return Failure(with_record_path(failure=delivered.failure(), path=saved)), False
+            return Failure(
+                with_record_path(failure=observed.failure(failure=delivered.failure()), path=saved)
+            ), False
 
     interrupted_record: list[Path] = []
 
     def cleanup_interrupted_wait() -> None:
-        deleted_job, saved_record = _delete_abandoned_gate_job(
+        deleted_job, saved_record = delete_abandoned_job(
             request=request, runner=runner, job_name=job_name
         )
         interrupted_record.append(saved_record)
@@ -468,25 +418,29 @@ def _gate_a_pushed_tree(
             job_name=job_name,
             cleanup=cleanup_interrupted_wait,
             wait=lambda: await_terminal_state(
-                request=request, runner=runner, sleeper=sleeper, job_name=job_name
+                request=request,
+                runner=runner,
+                sleeper=sleeper,
+                job_name=job_name,
+                observe_status=lambda status: observed.observe_status(status=status),
             ),
         )
     except GateWaitInterruptedError as interrupted:
         return Failure(
             with_record_path(
-                failure=interrupted_wait_failure(interrupted=interrupted),
+                failure=observed.failure(failure=interrupted_wait_failure(interrupted=interrupted)),
                 path=interrupted_record[-1],
             )
         ), False
     if isinstance(terminal, Failure):
-        deleted, saved = _delete_abandoned_gate_job(
-            request=request, runner=runner, job_name=job_name
-        )
+        deleted, saved = delete_abandoned_job(request=request, runner=runner, job_name=job_name)
         report_gate_cleanup_failure(job_name=job_name, outcome=deleted)
         # A delete acknowledgement does not prove the Job has ceased using its
         # mirror input, so the existing mirror sweep remains the collector for
         # this no-verdict path.
-        return Failure(with_record_path(failure=terminal.failure(), path=saved)), False
+        return Failure(
+            with_record_path(failure=observed.failure(failure=terminal.failure()), path=saved)
+        ), False
     ended = terminal.unwrap()
     # Read only when there is a failure to explain. That is a decision about
     # whether to spend an API call, NOT an adjudication: the pod's readings are
@@ -495,14 +449,14 @@ def _gate_a_pushed_tree(
         FailedPod()
         if ended.condition == COMPLETE_CONDITION
         else read_failed_pod(
-            kubectl=_kubectl(request=request),
+            kubectl=kubectl(request=request),
             runner=runner,
             cwd=request.repo_root,
             job_name=job_name,
         )
     )
     logs_argv = [
-        *_kubectl(request=request),
+        *kubectl(request=request),
         "logs",
         f"job/{job_name}",
         "--all-containers",
@@ -525,9 +479,13 @@ def _gate_a_pushed_tree(
                 terminal_state=ended.condition,
                 logs_returncode=ran.returncode,
                 failure_message=failed.message,
+                created_at=created_at,
                 started_at=reported_time(status=ended.status, key=_START_TIME),
                 finished_at=reported_time(status=ended.status, key=_COMPLETION_TIME),
-                output_checksum=_shown_output_checksum(request=request, output=ran.stdout),
+                terminal_at=terminal_transition_time(
+                    status=ended.status, condition=ended.condition
+                ),
+                output_checksum=shown_output_checksum(request=request, output=ran.stdout),
                 member_verdicts=(
                     parse_member_report(output=ran.stdout) if request.capture_output else None
                 ),
@@ -536,11 +494,3 @@ def _gate_a_pushed_tree(
         ),
         True,
     )
-
-
-def _shown_output_checksum(*, request: GateRunRequest, output: str) -> str:
-    """Show a captured log to the operator and checksum it; an uncaptured one has none."""
-    if not request.capture_output:
-        return ""
-    _ = sys.stdout.write(output)
-    return f"sha256:{hashlib.sha256(output.encode('utf-8')).hexdigest()}"
