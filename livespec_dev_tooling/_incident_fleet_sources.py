@@ -71,6 +71,11 @@ _REQUIRED = (
     "cumulative_scope",
     "normal_factory_proof",
 )
+_CITATION = (
+    "proving_repository",
+    "proving_incident_item",
+    "proving_release_build",
+)
 
 
 def _claim(*, entry: object) -> CapabilityEvidence | None:
@@ -79,9 +84,10 @@ def _claim(*, entry: object) -> CapabilityEvidence | None:
     record = cast("dict[str, object]", entry)
     reason = record.get("reason", "")
     if (
-        set(record) - {*_REQUIRED, "reason"}
+        set(record) - {*_REQUIRED, *_CITATION, "reason"}
         or not all(isinstance(record.get(key), str) for key in _REQUIRED)
         or not isinstance(reason, str)
+        or any(key in record and not isinstance(record[key], str) for key in _CITATION)
     ):
         return None
     text = cast("dict[str, str]", record)
@@ -99,6 +105,9 @@ def _claim(*, entry: object) -> CapabilityEvidence | None:
         cumulative_scope=text["cumulative_scope"],
         normal_factory_proof=text["normal_factory_proof"],
         reason=reason,
+        proving_repository=cast("str", record.get("proving_repository", "")),
+        proving_incident_item=cast("str", record.get("proving_incident_item", "")),
+        proving_release_build=cast("str", record.get("proving_release_build", "")),
     )
 
 

@@ -28,7 +28,29 @@ _INCOMPLETE_IMPLEMENTED = (
 _UNREADABLE = "serving version unreadable: no installed serving build was read (unverified)"
 
 
-def _claim_gap(*, claim: CapabilityEvidence, manifest_sha256: str, instruction_only: bool) -> str:
+def _citation_gap(
+    *, claim: CapabilityEvidence, citation: Callable[[CapabilityEvidence], str]
+) -> str:
+    """Return a citation's independent failure before a consumer can borrow proof."""
+    if not claim.cites_proving_incident:
+        return ""
+    missing = tuple(
+        name
+        for name, value in (
+            ("repository", claim.proving_repository),
+            ("incident item", claim.proving_incident_item),
+            ("release build", claim.proving_release_build),
+        )
+        if not value
+    )
+    if missing:
+        return "citing claim omits proving incident " + ", ".join(missing)
+    return citation(claim)
+
+
+def _claim_gap(  # noqa: PLR0911 — each claim failure names a distinct remediation.
+    *, claim: CapabilityEvidence, manifest_sha256: str, instruction_only: bool
+) -> str:
     """What the claim itself lacks before any serving read is consulted; "" when nothing."""
     if claim.manifest_sha256 != manifest_sha256:
         return (
@@ -44,6 +66,8 @@ def _claim_gap(*, claim: CapabilityEvidence, manifest_sha256: str, instruction_o
         return _INCOMPLETE_CLAIM
     if claim.disposition != "implemented":
         return "" if claim.reason else f"claim gives no reason for {claim.disposition}"
+    if claim.cites_proving_incident:
+        return ""
     if instruction_only or (
         bool(claim.incident_item and claim.normal_factory_proof)
         and _SCOPE_DIGEST.fullmatch(claim.cumulative_scope) is not None
@@ -86,7 +110,7 @@ def _normal_gap(*, claim: CapabilityEvidence) -> str:
     return ""
 
 
-def row_gap(
+def row_gap(  # noqa: PLR0913 — the independently injected readers are audit seams.
     *,
     claim: CapabilityEvidence | None,
     manifest_sha256: str,
@@ -94,6 +118,7 @@ def row_gap(
     inapplicable: bool,
     confirmed: Callable[[CapabilityEvidence], bool],
     explain: Callable[[CapabilityEvidence], str],
+    citation: Callable[[CapabilityEvidence], str] = lambda _claim: "",
 ) -> str:
     """The first missing evidence of a row; "" when the claim classifies it.
 
@@ -115,4 +140,7 @@ def row_gap(
         return gap
     if claim.disposition == "deliberately-normal":
         return _normal_gap(claim=claim)
+    citation_failure = _citation_gap(claim=claim, citation=citation)
+    if citation_failure:
+        return citation_failure
     return _serving_gap(claim=claim, confirmed=confirmed, explain=explain)
