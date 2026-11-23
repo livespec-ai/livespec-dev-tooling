@@ -46,6 +46,7 @@ case "${1:-}" in
                 printf '%s\n' \
                     $'ghcr.io/example/sandbox\tpython-v1.0.0\tsha256:superseded' \
                     $'ghcr.io/example/sandbox\tpython-v2.0.0\tsha256:python-current' \
+                    $'ghcr.io/example/sandbox\tpython-v3.0.0-build\tsha256:build-suffixed' \
                     $'ghcr.io/example/sandbox\tpython-rust-v1.0.0\tsha256:rust-current' \
                     $'ghcr.io/example/sandbox\trollback-v1.0.0\tsha256:recent-retagged' \
                     $'ghcr.io/example/sandbox\tused-v1.0.0\tsha256:stopped-used'
@@ -99,6 +100,7 @@ def _run_image_leg(*, tmp_path: Path) -> None:
         "rust-current",
         "recent-retagged",
         "stopped-used",
+        "build-suffixed",
     ):
         _ = (image_state / image_id).touch()
     log = tmp_path / "docker.log"
@@ -134,6 +136,9 @@ def _run_image_leg(*, tmp_path: Path) -> None:
     assert (
         image_state / "python-current"
     ).exists(), "the newest python tag-series image must survive even when it is old"
+    assert (
+        image_state / "build-suffixed"
+    ).exists(), "a tag with text after the PATCH component is its own series, not python's"
     assert (
         image_state / "rust-current"
     ).exists(), "a repository's python-rust series has its own newest-image keep"

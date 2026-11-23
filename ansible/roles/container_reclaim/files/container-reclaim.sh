@@ -300,6 +300,18 @@ prune_containers() {
     echo "${mb}"
 }
 
+# Sets REPLY to "<repository>\t<tag series>".  A tag series is the tag with
+# one trailing -v<MAJOR>.<MINOR>.<PATCH> removed; the version must be the whole
+# tail of the tag, so a tag such as python-v1.2.3-build is its own series.
+tag_series_key() {
+    local repo="$1" tag="$2"
+    local series_pattern='^(.*)-v[0-9]+\.[0-9]+\.[0-9]+$'
+    if [[ "${tag}" =~ ${series_pattern} ]]; then
+        tag="${BASH_REMATCH[1]}"
+    fi
+    REPLY="${repo}"$'\t'"${tag}"
+}
+
 prune_images() {
     # SECONDARY LEVER, and it is the smaller half: on vps ~9 GB of image layers
     # against ~33.8 GB of exited-container writable layers.  Do not delegate
@@ -373,8 +385,8 @@ prune_images() {
                 created_by_id["${id}"]="${created_at}"
                 age_by_id["${id}"]="${age_at}"
             fi
-            series="${tag%-v[0-9]*.[0-9]*.[0-9]*}"
-            series="${repo}"$'\t'"${series}"
+            tag_series_key "${repo}" "${tag}"
+            series="${REPLY}"
             # Docker can report equal Created timestamps for images built in the
             # same second.  Keep the later inventory record in that tie so a
             # series still has one deterministic current image.
@@ -387,8 +399,8 @@ prune_images() {
 
         while IFS=$'\t' read -r repo tag id; do
             [[ -n "${repo}" && -n "${tag}" && -n "${id}" ]] || continue
-            series="${tag%-v[0-9]*.[0-9]*.[0-9]*}"
-            series="${repo}"$'\t'"${series}"
+            tag_series_key "${repo}" "${tag}"
+            series="${REPLY}"
             [[ "${newest_ids[${series}]}" == "${id}" ]] && continue
             [[ -n "${used_images[${id}]+x}" ]] && continue
             (( now - age_by_id["${id}"] > horizon )) || continue
