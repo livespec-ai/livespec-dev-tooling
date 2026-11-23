@@ -10,9 +10,11 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+
+from claude_scratch_mover_recovery import rename_without_replacement
 
 __all__: list[str] = [
     "References",
@@ -153,15 +155,28 @@ def _projects(*, ram_root: Path) -> Iterator[Path]:
             yield project
 
 
-def restore_staging(*, ram_root: Path) -> list[Path]:
-    """Rename back every staging directory a crashed pass left; return them."""
+def restore_staging(
+    *, ram_root: Path, on_blocked: Callable[[Path, Path], None] | None = None
+) -> list[Path]:
+    """Restore crashed staging directories without replacing a session name.
+
+    ``on_blocked`` receives the staging and original paths when another
+    directory already owns the original name. Both paths are then left alone.
+    """
     restored: list[Path] = []
+    blocked: list[tuple[Path, Path]] = []
     for project in _projects(ram_root=ram_root):
         for entry in sorted(project.iterdir()):
             match = _STAGING_NAME.match(entry.name)
-            if match and real_dir(path=entry, uid=None) and not (project / match[1]).exists():
-                entry.rename(project / match[1])
-                restored.append(project / match[1])
+            destination = project / match[1] if match else None
+            if match and real_dir(path=entry, uid=None) and destination is not None:
+                if rename_without_replacement(source=entry, destination=destination):
+                    restored.append(destination)
+                elif os.path.lexists(destination):
+                    blocked.append((entry, destination))
+    if on_blocked is not None:
+        for staging, destination in blocked:
+            on_blocked(staging, destination)
     return restored
 
 

@@ -256,6 +256,21 @@
     - dev_host_memory_bounds_state == 'present'
     - dev_host_memory_bounds_scratch_mover_enabled | bool
 
+- name: Install the scratch mover's recovery module
+  # Install dependencies before the executable, so a timer firing mid-apply
+  # never imports a module that is not yet on disk.
+  ansible.builtin.copy:
+    src: claude_scratch_mover_recovery.py
+    dest: "{{ dev_host_memory_bounds_scratch_mover_bin | dirname }}/claude_scratch_mover_recovery.py"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" %s
+  become: true
+  when:
+    - dev_host_memory_bounds_state == 'present'
+    - dev_host_memory_bounds_scratch_mover_enabled | bool
+
 - name: Install the scratch mover's read-only scan module
   # Installed before the executable, so a timer firing mid-apply never imports
   # a scan module that is not yet on disk.
@@ -349,6 +364,7 @@
     - "{{ dev_host_memory_bounds_system_unit_dir }}/{{ dev_host_memory_bounds_scratch_mover_service }}"
     - "{{ dev_host_memory_bounds_scratch_mover_bin }}"
     - "{{ dev_host_memory_bounds_scratch_mover_bin | dirname }}/claude_scratch_mover_scan.py"
+    - "{{ dev_host_memory_bounds_scratch_mover_bin | dirname }}/claude_scratch_mover_recovery.py"
   when: >-
     dev_host_memory_bounds_state == 'absent'
     or not (dev_host_memory_bounds_scratch_mover_enabled | bool)

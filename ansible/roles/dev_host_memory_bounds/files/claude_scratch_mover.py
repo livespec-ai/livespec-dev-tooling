@@ -52,6 +52,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from claude_scratch_mover_recovery import put_back, remove_partial_destination
 from claude_scratch_mover_scan import (
     References,
     is_referenced,
@@ -134,7 +135,7 @@ def _refusal(*, source: Path, destination: Path, staging: Path, owner_uid: int) 
     return None
 
 
-def move(
+def move(  # noqa: C901, PLR0911, PLR0912
     *,
     source: Path,
     ram_root: Path,
@@ -147,20 +148,30 @@ def move(
     staging = source.parent / f".{source.name}.moving"
     refusal = _refusal(source=source, destination=destination, staging=staging, owner_uid=owner_uid)
     if refusal is not None:
+        if refusal == "destination-exists":
+            return "destination-exists", None
         return "move-failed", refusal
-    source.rename(staging)
+    if put_back(staging=source, source=staging) != "restored":
+        return "move-failed", "staging-exists"
     fresh = references()
     if (
         fresh.scan_failed
         or source.name in fresh.sessions
         or is_referenced(directory=source, references=fresh)
     ):
-        staging.rename(source)
-        return "kept", "referenced-after-staging"
+        restored = put_back(staging=staging, source=source)
+        if restored == "restored":
+            return "kept", "referenced-after-staging"
+        if restored == "restore-blocked":
+            return "restore-blocked", None
+        return "move-failed", "restore-incomplete"
     # Check the destination again right before the copy resolves it.
     if not real_dir(path=destination.parent, uid=None):
-        staging.rename(source)
-        return "move-failed", "unsafe-destination"
+        restored = put_back(staging=staging, source=source)
+        if restored == "restore-blocked":
+            return "restore-blocked", None
+        detail = "unsafe-destination" if restored == "restored" else "restore-incomplete"
+        return "move-failed", detail
     completed = subprocess.run(  # noqa: S603 -- fixed argv, no shell
         ["mv", "-n", "-T", "--", str(staging), str(destination)],  # noqa: S607 -- coreutils mv
         capture_output=True,
@@ -168,8 +179,14 @@ def move(
         check=False,
     )
     if completed.returncode != 0 or staging.exists():
-        if staging.exists() and not source.exists():
-            staging.rename(source)
+        if staging.exists():
+            if os.path.lexists(source):
+                return "restore-blocked", None
+            restored = put_back(staging=staging, source=source)
+            if restored == "restored":
+                remove_partial_destination(destination=destination)
+            elif restored == "restore-blocked":
+                return "restore-blocked", None
         return "move-failed", completed.stderr.strip() or "move-incomplete"
     return "moved", None
 
@@ -221,7 +238,7 @@ def _decide(
     return reason
 
 
-def run(
+def run(  # noqa: C901, PLR0912, PLR0915
     *,
     config: Config,
     references: Callable[[], References],
@@ -233,8 +250,14 @@ def run(
     if stop is not None:
         return stop
     owner_uid = config.ram_root.lstat().st_uid
-    for restored in restore_staging(ram_root=config.ram_root):
+    blocked_restores: list[tuple[Path, Path]] = []
+    for restored in restore_staging(
+        ram_root=config.ram_root,
+        on_blocked=lambda staging, destination: blocked_restores.append((staging, destination)),
+    ):
         _emit(event="restored-staging", path=str(restored))
+    for staging, destination in blocked_restores:
+        _emit(event="restore-blocked", staging=str(staging), destination=str(destination))
     failures = 0
     moved = 0
     snapshot = references()
@@ -264,6 +287,15 @@ def run(
             _emit(event="moved", path=str(directory), to=str(config.disk_root))
         elif event == "kept":
             _emit(event="kept", path=str(directory), reason=detail)
+        elif event == "destination-exists":
+            _emit(event="destination-exists", path=str(directory))
+        elif event == "restore-blocked":
+            failures += 1
+            _emit(
+                event="restore-blocked",
+                staging=str(directory.parent / f".{directory.name}.moving"),
+                destination=str(directory),
+            )
         else:
             failures += 1
             _emit(event="move-failed", path=str(directory), error=detail)
