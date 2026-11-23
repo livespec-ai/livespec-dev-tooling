@@ -43,6 +43,7 @@ the script the armed unit runs.
 
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import pwd
@@ -1311,3 +1312,111 @@ def test_hetzner_xubuntu_gets_the_retention_from_the_committed_group_and_play() 
     play = yaml.safe_load((_ANSIBLE / "dev-host-retention.yml").read_text(encoding="utf-8"))[0]
     assert play["hosts"] == "dev_host_retention_hosts"
     assert {"role": "dev_host_retention", "tags": ["dev_host_retention"]} in play["roles"]
+
+
+def _worktree_report_fixture(
+    *, tmp_path: Path, env: dict[str, str]
+) -> tuple[Path, Path, Path, Path]:
+    home = tmp_path / "retention-user"
+    primary = tmp_path / "primary"
+    origin = tmp_path / "origin.git"
+    worktree_root = home / ".worktrees" / "project"
+
+    def git(*args: str, cwd: Path) -> str:
+        done = subprocess.run(
+            ["git", *args], cwd=cwd, env=env, check=True, capture_output=True, text=True
+        )
+        return done.stdout.strip()
+
+    for args in (
+        ("init", "--bare", "--initial-branch=master", str(origin)),
+        ("init", "--initial-branch=master", str(primary)),
+    ):
+        _ = subprocess.run(["git", *args], env=env, check=True, capture_output=True, text=True)
+    for args in (("user.name", "Retention test"), ("user.email", "retention@example.test")):
+        _ = git("config", *args, cwd=primary)
+    _ = (primary / "tracked.txt").write_text("base\n", encoding="utf-8")
+    for args in (
+        ("add", "tracked.txt"),
+        ("commit", "--quiet", "-m", "base"),
+        ("remote", "add", "origin", str(origin)),
+        ("push", "--quiet", "-u", "origin", "master"),
+    ):
+        _ = git(*args, cwd=primary)
+
+    clean, dirty, unmerged = (worktree_root / name for name in ("merged", "dirty", "unmerged"))
+    for branch, worktree in (("merged", clean), ("dirty", dirty), ("unmerged", unmerged)):
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+        _ = git(
+            "worktree", "add", "--quiet", "-b", branch, str(worktree), "origin/master", cwd=primary
+        )
+    _ = (dirty / "tracked.txt").write_text("dirty\n", encoding="utf-8")
+    _ = (unmerged / "unmerged.txt").write_text("local only\n", encoding="utf-8")
+    for args in (("add", "unmerged.txt"), ("commit", "--quiet", "-m", "unmerged")):
+        _ = git(*args, cwd=unmerged)
+    clean_index = Path(git("rev-parse", "--git-path", "index", cwd=clean))
+    old = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    os.utime(clean_index, (old, old))
+    return home, clean, dirty, unmerged
+
+
+def test_a_run_reports_only_clean_merged_aged_worktrees_and_removes_none(*, tmp_path: Path) -> None:
+    """A report is deliberately narrower than a sweep.
+
+    A linked worktree under the retention user's ``~/.worktrees`` is eligible
+    only when its index is old, it is clean (including no untracked files),
+    and its commit is already on the repository's remote default branch.  The
+    dirty and unmerged neighbours model the two ordinary cases where a session
+    still owns useful work; all three directories must remain after the report.
+    """
+    env = _base_env(tmp_path=tmp_path)
+    home, clean, dirty, unmerged = _worktree_report_fixture(tmp_path=tmp_path, env=env)
+
+    done = _retain(
+        env=env
+        | {
+            "HOME": str(home),
+            "LIVESPEC_DEV_HOST_WORKTREE_ROOT": str(home / ".worktrees"),
+            "LIVESPEC_DEV_HOST_WORKTREE_REPORT_DAYS": "7",
+            "LIVESPEC_DEV_HOST_WORKTREE_REPORT_THRESHOLD_GIB": "999999",
+        }
+    )
+
+    report = done.stdout + done.stderr
+    assert done.returncode == 0, report
+    assert str(clean) in report, report
+    assert str(dirty) not in report, report
+    assert str(unmerged) not in report, report
+    assert "worktree retention total" in report, report
+    assert clean.is_dir() and dirty.is_dir() and unmerged.is_dir(), report
+
+
+def test_the_worktree_report_scans_the_retention_users_home_not_the_callers(
+    *, tmp_path: Path
+) -> None:
+    """The unit runs as root, so the report must not default to root's ``$HOME``."""
+    env = _base_env(tmp_path=tmp_path)
+    home, clean, _dirty, _unmerged = _worktree_report_fixture(tmp_path=tmp_path, env=env)
+    user = getpass.getuser()
+    stub_dir = tmp_path / "getent-stub"
+    stub_dir.mkdir()
+    getent = stub_dir / "getent"
+    _ = getent.write_text(
+        f'#!/bin/sh\nprintf \'%s:x:1000:1000::%s:/bin/sh\\n\' "$2" "{home}"\n', encoding="utf-8"
+    )
+    getent.chmod(0o755)
+
+    done = _retain(
+        env=env
+        | {
+            "PATH": f"{stub_dir}{os.pathsep}{env['PATH']}",
+            "HOME": str(tmp_path / "callers-home"),
+            "LIVESPEC_DEV_HOST_RETENTION_USER": user,
+            "LIVESPEC_DEV_HOST_WORKTREE_REPORT_DAYS": "7",
+            "LIVESPEC_DEV_HOST_WORKTREE_REPORT_THRESHOLD_GIB": "999999",
+        }
+    )
+
+    report = done.stdout + done.stderr
+    assert done.returncode == 0, report
+    assert str(clean) in report, report

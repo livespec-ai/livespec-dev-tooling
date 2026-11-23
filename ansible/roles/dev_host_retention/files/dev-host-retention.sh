@@ -41,6 +41,10 @@
 set -uo pipefail
 
 RETENTION_DAYS=${LIVESPEC_DEV_HOST_RETENTION_DAYS:-7}
+WORKTREE_REPORT_DAYS=${LIVESPEC_DEV_HOST_WORKTREE_REPORT_DAYS:-3}
+WORKTREE_REPORT_THRESHOLD_GIB=${LIVESPEC_DEV_HOST_WORKTREE_REPORT_THRESHOLD_GIB:-40}
+NTFY_TOPIC=${LIVESPEC_DEV_HOST_NTFY_TOPIC:-}
+NTFY_SERVER=${LIVESPEC_DEV_HOST_NTFY_SERVER:-https://ntfy.sh}
 CHECKOUT_ROOTS=${LIVESPEC_DEV_HOST_RETENTION_CHECKOUT_ROOTS:-/home/ubuntu/workspace}
 FILESYSTEM=${LIVESPEC_DEV_HOST_RETENTION_FILESYSTEM:-/}
 TMP_ROOT=${LIVESPEC_DEV_HOST_TMP_ROOT:-/tmp}
@@ -49,6 +53,11 @@ BULK_DUMP_DIR=${LIVESPEC_DEV_HOST_BULK_DUMP_DIR:-/var/tmp/livespec-dumps}
 BULK_DUMP_CAP_BYTES=${LIVESPEC_DEV_HOST_BULK_DUMP_CAP_BYTES:-21474836480}
 RETENTION_USER=${LIVESPEC_DEV_HOST_RETENTION_USER:-root}
 UV_BIN=${LIVESPEC_DEV_HOST_RETENTION_UV_BIN:-uv}
+# The unit runs as root, so $HOME is root's: the worktrees to report are the
+# retention user's. $HOME is only the fallback for a hand run whose account the
+# passwd database cannot name.
+retention_home=$(getent passwd "$RETENTION_USER" 2>/dev/null | cut -d: -f6)
+WORKTREE_ROOT=${LIVESPEC_DEV_HOST_WORKTREE_ROOT:-${retention_home:-$HOME}/.worktrees}
 # 900s, not 300s: on 2026-11-21 the VPS's 45G, ~200k-file cache outran 300s every
 # night, the walk was cut off before it reached a root-owned .pyc, and the prune
 # then aborted on it. The prune-failure repair below is what makes a cut-off
@@ -412,6 +421,74 @@ sweep_checkout_roots() {
     done
 }
 
+# The report only makes claims that can be checked without updating a worktree.
+# The local remote-tracking ref must exactly match the remote's advertised HEAD
+# branch, so a stale tracking ref cannot make a worktree look merged. `git
+# cherry` then accepts either ancestry or a sequence of patch-equivalent
+# commits, which is the safe case after a squash or rebased merge.
+worktree_default_ref() {
+    local worktree=$1 remote=$2 symref branch local_ref local_oid remote_oid
+    symref=$(git -C "$worktree" ls-remote --symref "$remote" HEAD 2>/dev/null \
+        | awk '$1 == "ref:" && $2 ~ /^refs\/heads\// && $3 == "HEAD" { print $2 }')
+    [[ -n $symref ]] || return 1
+    branch=${symref#refs/heads/}
+    local_ref="refs/remotes/$remote/$branch"
+    local_oid=$(git -C "$worktree" rev-parse --verify "${local_ref}^{commit}" 2>/dev/null) || return 1
+    remote_oid=$(git -C "$worktree" ls-remote "$remote" "$symref" 2>/dev/null | awk 'NR == 1 { print $1 }')
+    [[ -n $remote_oid && $local_oid == "$remote_oid" ]] || return 1
+    printf '%s\n' "$local_ref"
+}
+
+report_merged_aged_worktrees() {
+    local cutoff dotgit worktree status index_mtime remote default_ref cherry branch repository size_kib
+    local total_kib=0 count=0
+    cutoff=$(( $(date -u +%s) - WORKTREE_REPORT_DAYS * 86400 ))
+    [[ -d $WORKTREE_ROOT ]] || {
+        log "worktree retention total: 0 KiB across 0 worktree(s)"
+        return 0
+    }
+    while IFS= read -r -d '' dotgit; do
+        worktree=${dotgit%/.git}
+        index_mtime=$(stat -c %Y "$(git -C "$worktree" rev-parse --git-path index 2>/dev/null)" 2>/dev/null) || continue
+        [[ $index_mtime =~ ^[0-9]+$ && $index_mtime -le $cutoff ]] || continue
+        # `git status` can refresh a clean index, so the age must be captured
+        # first: it is the index age at the start of this report that matters.
+        status=$(git -C "$worktree" status --porcelain --untracked-files=all 2>/dev/null) || continue
+        [[ -z $status ]] || continue
+        remote=origin
+        git -C "$worktree" remote get-url "$remote" >/dev/null 2>&1 || continue
+        default_ref=$(worktree_default_ref "$worktree" "$remote") || continue
+        cherry=$(git -C "$worktree" cherry "$default_ref" HEAD 2>/dev/null) || continue
+        grep -q '^+' <<<"$cherry" && continue
+        branch=$(git -C "$worktree" symbolic-ref --quiet --short HEAD 2>/dev/null || printf detached)
+        repository=$(git -C "$worktree" remote get-url "$remote" 2>/dev/null || printf unknown)
+        size_kib=$(du -sk -x -- "$worktree" 2>/dev/null | awk 'NR == 1 { print $1 }')
+        [[ $size_kib =~ ^[0-9]+$ ]] || continue
+        log "worktree retention: path=$worktree repository=$repository branch=$branch size=${size_kib} KiB"
+        total_kib=$((total_kib + size_kib))
+        count=$((count + 1))
+    done < <(find "$WORKTREE_ROOT" -type f -name .git -print0 2>/dev/null)
+    log "worktree retention total: ${total_kib} KiB across ${count} worktree(s)"
+    if [[ ! $WORKTREE_REPORT_THRESHOLD_GIB =~ ^[0-9]+$ ]]; then
+        log "WARNING: invalid worktree report threshold '$WORKTREE_REPORT_THRESHOLD_GIB'; no notification sent"
+        return 0
+    fi
+    if ((total_kib < WORKTREE_REPORT_THRESHOLD_GIB * 1024 * 1024)); then
+        return 0
+    fi
+    if [[ -z $NTFY_TOPIC ]]; then
+        log "WARNING: no ntfy topic configured; worktree report notification not sent"
+        return 0
+    fi
+    if curl --fail --silent --show-error -H 'Title: Dev host worktree retention report' \
+        -d "${count} merged, clean, aged worktree(s) total ${total_kib} KiB" \
+        "$NTFY_SERVER/$NTFY_TOPIC"; then
+        log "sent worktree retention notification for ${count} worktree(s), ${total_kib} KiB"
+    else
+        log "WARNING: ntfy publication failed for worktree retention report"
+    fi
+}
+
 log "gate-run retention period: ${RETENTION_DAYS} days; scratch retention: ${SCRATCH_RETENTION_SECONDS}s"
 report_free_space before "$FILESYSTEM"
 report_free_space before /tmp
@@ -419,6 +496,7 @@ prune_docker_images
 prune_uv_cache
 enforce_uv_cache_cap
 sweep_checkout_roots
+report_merged_aged_worktrees
 if declare -F reclaim_scratch_and_bulk >/dev/null; then
     reclaim_scratch_and_bulk "$TMP_ROOT" "$SCRATCH_RETENTION_SECONDS" "$BULK_DUMP_DIR" "$BULK_DUMP_CAP_BYTES"
 fi
