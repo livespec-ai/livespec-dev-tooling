@@ -6587,3 +6587,19 @@ And the renderer invoked with --queue gates-repro-lq and --node gmktec-xubuntu M
 And the gates-repro-cq ClusterQueue MUST list a ResourceFlavor for gmktec-xubuntu and one for poweredge-xubuntu, and MUST list none for gamingpc-xubuntu or hp-xubuntu.
 And a converge run MUST leave neither the gates-repro-gamingpc-flavor nor the gates-repro-hp-flavor ResourceFlavor on the cluster, and a second run MUST NOT fail on their absence.
 ```
+
+## Scenario: dev host retention reports merged, aged worktrees and removes none
+
+Given a dev host whose worktree root holds a worktree whose branch is merged into the remote default branch, clean and older than the worktree report period
+
+And a worktree with an uncommitted change
+
+And a worktree whose branch has a commit not on the default branch
+
+When the retention run executes
+
+Then the run's log names the merged, clean, aged worktree with its repository, branch and size
+
+And it names neither of the other two
+
+And all three worktrees are still present after the run
