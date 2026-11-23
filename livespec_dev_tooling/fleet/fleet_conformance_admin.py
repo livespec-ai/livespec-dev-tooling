@@ -75,6 +75,16 @@ same shared credential-class rule `central_run_vantages` applies — NOT
 a lever: no env var, exemption, or demotion path exists, and the
 classification never widens beyond the `ghs_` class.
 
+The same classification applies to a node that holds NO token variable but reads the forge
+through the factory sandbox's refreshing `gh` wrapper (the interim reader context of
+bd-ib-zf2kdh: the janitor withdraws GITHUB_TOKEN and GH_TOKEN, and the wrapper mints a READ-ONLY
+installation token from an owner-only inputs file in its bundle root). That token is `ghs_`-class
+and admin scope is withheld from it exactly as from the dispatch token, so the lane keys on the
+SAME evidence the wrapper uses: the inputs file at its resolved path, a regular non-symlink,
+non-empty file, owner-only, owned by the running uid. The check reads none of the file's values; an
+empty, group- or world-readable, foreign-owned or non-regular file is no evidence and the lane
+stays in its vantage and fails as before.
+
 Within the lane's own vantage — ANY user-class credential — shortfall
 is NOT silently tolerated. Running without admin scope makes both
 member rows skip for every member — and an unreadable released adopter
@@ -107,6 +117,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -183,6 +194,39 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# The sandbox `gh` wrapper's bundle, where it reads the interim inputs file (bd-ib-zf2kdh). The
+# resolution mirrors the orchestrator's `resolve_sandbox_gh_refresh_root`: an explicit refresh-root
+# override, else the sandbox plugins root (or `$HOME/.claude/plugins`) plus the bundle directory.
+_REFRESH_ROOT_VAR = "LIVESPEC_SANDBOX_GH_REFRESH_ROOT"
+_PLUGINS_ROOT_VAR = "LIVESPEC_SANDBOX_CLAUDE_PLUGINS_ROOT"
+_BUNDLE_DIRNAME = "livespec-gh-refresh"
+_INPUTS_FILENAME = "app-inputs.env"
+_NOT_OWNER_ONLY = 0o077
+
+
+def interim_reader_inputs_path(*, environ: Mapping[str, str]) -> Path:
+    """The path the wrapper reads its interim inputs from, resolved from `environ` alone."""
+    override = environ.get(_REFRESH_ROOT_VAR, "").strip()
+    if override:
+        return Path(override) / _INPUTS_FILENAME
+    plugins = environ.get(_PLUGINS_ROOT_VAR, "").strip() or str(
+        Path(environ.get("HOME", "")) / ".claude" / "plugins"
+    )
+    return Path(plugins) / _BUNDLE_DIRNAME / _INPUTS_FILENAME
+
+
+def holds_interim_reader_inputs(*, path: Path, uid: int) -> bool:
+    """True when `path` is the wrapper's trusted inputs file; no value in it is read.
+
+    A regular file (never a symlink), non-empty, readable and writable by its owner only, and
+    owned by `uid`. Anything else is no evidence of the interim reader context.
+    """
+    if path.is_symlink() or not path.is_file():
+        return False
+    status = path.stat()
+    return status.st_size > 0 and status.st_uid == uid and not status.st_mode & _NOT_OWNER_ONLY
+
+
 def _dispatch_class_out_of_vantage(*, log: structlog.stdlib.BoundLogger) -> int:
     """Classify every row this lane owns out-of-vantage for a dispatch-class run.
 
@@ -232,7 +276,10 @@ def main() -> int:
     # what leaves `holds_app_class_credential` total under livespec v179
     # member 1 rather than disqualified by clause (c).
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
-    if holds_app_class_credential(token=token):
+    inputs = interim_reader_inputs_path(environ=os.environ)
+    if holds_app_class_credential(token=token) or holds_interim_reader_inputs(
+        path=inputs, uid=os.getuid()
+    ):
         return _dispatch_class_out_of_vantage(log=log)
     resolved = reported_owner(argument=cast("str | None", args.owner), log=log)
     if isinstance(resolved, IOFailure):

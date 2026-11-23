@@ -29,9 +29,11 @@ sandbox whose ambient GITHUB_TOKEN is `ghs_`-class.
 from __future__ import annotations
 
 import json
+import os
 import sys
-from typing import TYPE_CHECKING
+from pathlib import Path
 
+import pytest
 from returns.io import IOFailure
 from test_fleet_conformance import (
     _MANIFEST_ARGS,  # pyright: ignore[reportPrivateUsage]
@@ -43,9 +45,6 @@ from test_fleet_conformance import (
 
 from livespec_dev_tooling.fleet import _cli_owner, fleet_conformance_admin
 from livespec_dev_tooling.fleet._context import GhResult, OriginRemoteUnresolved
-
-if TYPE_CHECKING:
-    import pytest
 
 __all__: list[str] = []
 
@@ -126,6 +125,9 @@ def _admin_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["fleet-conformance-admin", "--owner", "acme"])
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    # Point the interim reader-context root at a directory that holds no inputs file, so a
+    # sandbox that really carries one cannot reclassify these operator-context tests.
+    monkeypatch.setenv("LIVESPEC_SANDBOX_GH_REFRESH_ROOT", "/nonexistent/livespec-gh-refresh")
 
 
 def _shortfall_table() -> dict[tuple[str, ...], GhResult]:
@@ -381,6 +383,98 @@ def test_admin_lane_is_out_of_vantage_under_a_dispatch_class_credential(
             "pre-push skips this lane since it left both local hook gates, so "
             "naming it directs the operator at a venue that will not run it"
         )
+
+
+def _interim_inputs(*, root: Path, content: str, mode: int) -> Path:
+    """The owner-only file the sandbox `gh` wrapper reads (the interim reader context)."""
+    root.mkdir(parents=True, exist_ok=True)
+    inputs = root / "app-inputs.env"
+    inputs.write_text(content, encoding="utf-8")
+    inputs.chmod(mode)
+    return inputs
+
+
+def test_admin_lane_is_out_of_vantage_in_the_interim_reader_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A node that reads through the wrapper's owner-only inputs file is dispatch-class.
+
+    The janitor of a factory run withdraws GITHUB_TOKEN and GH_TOKEN (bd-ib-zf2kdh) and reads the
+    forge through the refreshing `gh` wrapper, which mints a READ-ONLY installation token from an
+    owner-only file in the bundle root. The env no longer says `ghs_`, but the file does: admin
+    scope is withheld from that token class exactly as from the dispatch token, so the lane must
+    classify out-of-vantage (exit 0, zero reads) instead of reading, taking 403s and exiting BLIND.
+    The check keys on the file's presence and mode only and reads none of its values.
+    """
+    calls: list[tuple[str, ...]] = []
+    _admin_argv(monkeypatch)
+    root = tmp_path / "livespec-gh-refresh"
+    _interim_inputs(root=root, content="GITHUB_APP_ID=42\n", mode=0o600)
+    monkeypatch.setenv("LIVESPEC_SANDBOX_GH_REFRESH_ROOT", str(root))
+    _install_recording_runner(monkeypatch, table=_shortfall_table(), calls=calls)
+
+    assert fleet_conformance_admin.main() == 0
+    assert calls == []
+
+
+def test_admin_lane_resolves_the_interim_root_from_the_plugins_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With no refresh-root override the wrapper's default root under the plugins root is used."""
+    calls: list[tuple[str, ...]] = []
+    _admin_argv(monkeypatch)
+    monkeypatch.delenv("LIVESPEC_SANDBOX_GH_REFRESH_ROOT")
+    monkeypatch.setenv("LIVESPEC_SANDBOX_CLAUDE_PLUGINS_ROOT", str(tmp_path))
+    _interim_inputs(root=tmp_path / "livespec-gh-refresh", content="GITHUB_APP_ID=42\n", mode=0o600)
+    _install_recording_runner(monkeypatch, table=_shortfall_table(), calls=calls)
+
+    assert fleet_conformance_admin.main() == 0
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("content", "mode"),
+    [
+        ("", 0o600),
+        ("GITHUB_APP_ID=42\n", 0o644),
+        ("GITHUB_APP_ID=42\n", 0o640),
+        ("GITHUB_APP_ID=42\n", 0o604),
+    ],
+    ids=["empty", "world-readable", "group-readable", "other-readable"],
+)
+def test_an_inputs_file_the_wrapper_would_not_trust_stays_user_class(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str, mode: int
+) -> None:
+    """An empty or non-owner-only file is no evidence: the lane stays in its vantage and fails."""
+    _admin_argv(monkeypatch)
+    root = tmp_path / "livespec-gh-refresh"
+    _interim_inputs(root=root, content=content, mode=mode)
+    monkeypatch.setenv("LIVESPEC_SANDBOX_GH_REFRESH_ROOT", str(root))
+    _install_runner(monkeypatch, table=_shortfall_table())
+
+    assert fleet_conformance_admin.main() == 4
+
+
+@pytest.mark.parametrize("shape", ["missing", "directory", "symlink"])
+def test_no_regular_inputs_file_means_no_reclassification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shape: str
+) -> None:
+    """A missing path, a directory and a symlink are not the regular file the wrapper reads."""
+    _admin_argv(monkeypatch)
+    root = tmp_path / "livespec-gh-refresh"
+    root.mkdir()
+    inputs = root / "app-inputs.env"
+    if shape == "directory":
+        inputs.mkdir()
+    if shape == "symlink":
+        real = tmp_path / "elsewhere.env"
+        real.write_text("GITHUB_APP_ID=42\n", encoding="utf-8")
+        real.chmod(0o600)
+        os.symlink(real, inputs)
+    monkeypatch.setenv("LIVESPEC_SANDBOX_GH_REFRESH_ROOT", str(root))
+    _install_runner(monkeypatch, table=_shortfall_table())
+
+    assert fleet_conformance_admin.main() == 4
 
 
 def test_admin_lane_fails_when_the_released_adopter_is_unreadable(
