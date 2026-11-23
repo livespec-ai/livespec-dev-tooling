@@ -982,6 +982,30 @@
   },
   {
     "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate outcome event carries the gate Job's queue wait and run duration",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the delegated gate client against a canned gate Job whose creationTimestamp, startTime and terminal condition are fixed and reading the emitted outcome span's attributes; livespec-dev-tooling-7g45w6 owns it.",
+    "work_item": "livespec-dev-tooling-7g45w6"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate run stopped before admission carries no queue wait or run duration",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the delegated gate client against a canned gate Job whose creationTimestamp, startTime and terminal condition are fixed and reading the emitted outcome span's attributes; livespec-dev-tooling-7g45w6 owns it.",
+    "work_item": "livespec-dev-tooling-7g45w6"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
+    "heading": "## Scenario: a delegated gate run stopped after admission carries its queue wait and no run duration",
+    "test": "TODO",
+    "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario, driving the delegated gate client against a canned gate Job whose creationTimestamp, startTime and terminal condition are fixed and reading the emitted outcome span's attributes; livespec-dev-tooling-7g45w6 owns it.",
+    "work_item": "livespec-dev-tooling-7g45w6"
+  },
+  {
+    "spec_root": "SPECIFICATION",
     "spec_file": "non-functional-requirements.md",
     "heading": "## Fleet manifest adopter profiles",
     "test": "tests.consumer.test_instruction_only_adopter_scenario.test_a_profile_that_is_not_exactly_instruction_only_rejects_the_whole_manifest",

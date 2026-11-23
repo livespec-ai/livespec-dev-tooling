@@ -1558,6 +1558,52 @@ Then the push MUST complete
 
 And the gate client MUST report the same verdict, and exit with the same status, that it reports when the outcome event is delivered
 
+## Scenario: a delegated gate outcome event carries the gate Job's queue wait and run duration
+
+Given a consumer repository whose `[tool.livespec_dev_tooling]` table sets `delegated_gate = true`
+
+And a pushing host where the pushing user can read the gates kubeconfig
+
+When a git push of a tree that has no green token runs the pre-push gate, and its gate Job is admitted by the cluster's queue and reaches its Complete condition with a green verdict
+
+Then the gate client MUST emit exactly one outcome event whose outcome is `passed`
+
+And that event MUST carry `livespec.gate.queue_wait_seconds`, equal to the seconds from the Job's `metadata.creationTimestamp` to its `status.startTime`
+
+And that event MUST carry `livespec.gate.duration_seconds`, equal to the seconds from the Job's `status.startTime` to the `lastTransitionTime` of its Complete condition
+
+## Scenario: a delegated gate run stopped before admission carries no queue wait or run duration
+
+Given a consumer repository whose `[tool.livespec_dev_tooling]` table sets `delegated_gate = true`
+
+And a pushing host where the pushing user can read the gates kubeconfig
+
+And a git push of a tree that has no green token whose pre-push gate has submitted its gate Job
+
+When the gate client receives SIGTERM while the cluster's queue has not yet admitted that Job
+
+Then the gate client MUST emit exactly one outcome event whose outcome is `no-verdict`
+
+And that event MUST NOT carry `livespec.gate.queue_wait_seconds`
+
+And that event MUST NOT carry `livespec.gate.duration_seconds`
+
+## Scenario: a delegated gate run stopped after admission carries its queue wait and no run duration
+
+Given a consumer repository whose `[tool.livespec_dev_tooling]` table sets `delegated_gate = true`
+
+And a pushing host where the pushing user can read the gates kubeconfig
+
+And a git push of a tree that has no green token whose pre-push gate has submitted its gate Job, which the cluster's queue has admitted
+
+When the gate client stops waiting before that Job reaches a terminal condition, because it receives SIGTERM or because its poll budget runs out
+
+Then the gate client MUST emit exactly one outcome event whose outcome is `no-verdict`
+
+And that event MUST carry `livespec.gate.queue_wait_seconds`, equal to the seconds from the Job's `metadata.creationTimestamp` to its `status.startTime`
+
+And that event MUST NOT carry `livespec.gate.duration_seconds`
+
 ## Scenario: the fabro-hosts play renders the factory registry from the inventory's factory names
 
 Given `fabro_factory_registry` maps `legacy` to one host's instance with a `docker_host`, and maps `petri` to another host's instance with no `docker_host`
