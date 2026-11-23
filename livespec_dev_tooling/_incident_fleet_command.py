@@ -22,7 +22,9 @@ _VENDOR_DIR = Path(__file__).resolve().parent / "_vendor"
 if str(_VENDOR_DIR) not in sys.path:
     sys.path.insert(0, str(_VENDOR_DIR))
 
+from returns.io import IOFailure  # noqa: E402
 from returns.result import Failure  # noqa: E402
+from returns.unsafe import unsafe_perform_io  # noqa: E402
 
 from livespec_dev_tooling._incident_fleet_capabilities import (  # noqa: E402
     CAPABILITIES,
@@ -37,6 +39,8 @@ from livespec_dev_tooling._incident_fleet_types import (  # noqa: E402
     FleetAudit,
     SurfaceDisposition,
 )
+from livespec_dev_tooling._incident_fleet_workflow import workflow_findings  # noqa: E402
+from livespec_dev_tooling.fleet._manifest_git import default_git_reader, git_file_text  # noqa: E402
 from livespec_dev_tooling.fleet.contract import Manifest, parse_manifest  # noqa: E402
 from livespec_dev_tooling.incident_fleet_audit import audit_incident_fleet  # noqa: E402
 from livespec_dev_tooling.incident_fleet_serving import ServingReader  # noqa: E402
@@ -94,6 +98,20 @@ def _confirmed(*, read_manifest: Callable[[], str | None], candidate_digest: str
     """Re-read core's master: the audited identity must be the one it serves now."""
     confirmed = read_manifest()
     return confirmed is not None and _digest(text=confirmed) == candidate_digest
+
+
+class _AdopterCiWorkflowReader:
+    """Read an adopter's workflow through the positional reader seam used by the audit."""
+
+    def __call__(self, repository: str) -> str | None:
+        owner, repo = repository.split("/", maxsplit=1)
+        result = git_file_text(
+            run=default_git_reader, owner=owner, repo=repo, path=".github/workflows/ci.yml"
+        )
+        return None if isinstance(result, IOFailure) else unsafe_perform_io(result.unwrap())
+
+
+_read_adopter_ci_workflow = _AdopterCiWorkflowReader()
 
 
 class _Cached(Protocol):
@@ -196,8 +214,26 @@ def run_fleet_audit(
         # An instruction-only adopter carries guidance surfaces only; the hooks serving them
         # are read and printed, but its missing read is already named by its unclassified rows.
         _ = served(repository=repository, capability="driver-hooks")
+    workflow_gaps = tuple(
+        finding
+        for adopter in manifest.adopters
+        if adopter.profile != ("instruction-only",)
+        for finding in workflow_findings(
+            repository=manifest.adopter_repository(adopter=adopter),
+            workflow=_read_adopter_ci_workflow(manifest.adopter_repository(adopter=adopter)),
+        )
+    )
+    findings = audit.findings + lacking + workflow_gaps
     return FleetReport(
-        audit=replace(audit, findings=audit.findings + lacking),
+        audit=replace(
+            audit,
+            findings=findings,
+            ready_repositories=tuple(
+                repository
+                for repository in audit.ready_repositories
+                if not any(finding.startswith(f"{repository}:") for finding in workflow_gaps)
+            ),
+        ),
         readings=tuple(sorted((r, c, v.build, v.detail, v.head) for (r, c), v in readings.items())),
     )
 
