@@ -428,13 +428,13 @@ worktree_is_on_default_branch() {
     # `git cherry` marks a commit with `+` only if no patch-equivalent commit
     # exists on the default branch.  Thus no pluses means every local commit
     # is already represented there, even if it arrived by a different commit.
-    ! git -C "$worktree" cherry "$default_ref" HEAD 2>/dev/null | grep -q '^+'
+    ! git -C "$worktree" cherry "$default_ref" HEAD 2>/dev/null | grep '^+' >/dev/null
 }
 
 worktree_default_ref() {
     local worktree=$1 branch
     branch=$(git -C "$worktree" ls-remote --symref origin HEAD 2>/dev/null |
-        awk '$1 == "ref:" && $2 ~ /^refs\/heads\// && $3 == "HEAD" {sub("refs/heads/", "", $2); print $2; exit}')
+        awk '$1 == "ref:" && $2 ~ /^refs\/heads\// && $3 == "HEAD" {sub("refs/heads/", "", $2); print $2}')
     [[ -n $branch ]] || return 1
     printf 'refs/remotes/origin/%s\n' "$branch"
 }
