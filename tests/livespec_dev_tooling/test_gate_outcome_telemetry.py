@@ -77,11 +77,30 @@ _MANIFEST = "apiVersion: batch/v1\nkind: Job\nmetadata:\n  generateName: gate-wi
 # the manifest asks for a `generateName`, which is what lets one tree be gated
 # twice — and is why the name can only be carried OUT of an adjudicated run.
 _JOB = "gate-widget-7f2qd"
-_CREATED = json.dumps({"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": _JOB}})
+_CREATED = json.dumps(
+    {
+        "apiVersion": "batch/v1",
+        "kind": "Job",
+        "metadata": {"name": _JOB, "creationTimestamp": "2026-11-23T10:00:00Z"},
+    }
+)
 _ORIGIN_URL = "git@github.com:acme/widget.git"
 _REPOSITORY = "widget"
 _JOB_ADMITTING = json.dumps({"status": {}})
-_JOB_COMPLETE = json.dumps({"status": {"conditions": [{"type": "Complete", "status": "True"}]}})
+_JOB_COMPLETE = json.dumps(
+    {
+        "status": {
+            "startTime": "2026-11-23T10:02:30Z",
+            "conditions": [
+                {
+                    "type": "Complete",
+                    "status": "True",
+                    "lastTransitionTime": "2026-11-23T10:09:15Z",
+                }
+            ],
+        }
+    }
+)
 _JOB_FAILED = json.dumps({"status": {"conditions": [{"type": "Failed", "status": "True"}]}})
 
 # `--git-common-dir` is matched BEFORE `rev-parse`, because the clone-identity
@@ -557,3 +576,38 @@ def test_a_delegated_gate_verdict_is_unchanged_when_its_event_cannot_be_delivere
     assert delivered == undelivered
     assert undelivered.state == GATE_PASSED
     assert undelivered.refuses_push is False
+
+
+def test_a_delegated_gate_outcome_event_carries_the_jobs_queue_wait_and_run_duration(
+    *, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scenario: a gate outcome uses the Job's timestamps, not its poll waits.
+
+    The canned Job was created at 10:00, Kueue admitted it at 10:02:30, and its
+    terminal condition changed at 10:09:15.  It deliberately omits
+    ``completionTime``: a terminal condition's ``lastTransitionTime`` is the
+    cluster reading available for every terminal Job, including a failed one.
+    The event must consequently carry 150 and 405 seconds as doubles, while
+    remaining a point event whose own timestamps say nothing about the gate's
+    duration.
+    """
+    accepted = _recording_receiver(monkeypatch)
+    repo_root = tmp_path / _REPOSITORY
+    repo_root.mkdir()
+
+    verdict = run_delegated_gate(
+        repo_root=repo_root,
+        renderer=_RENDERER,
+        runner=_CannedCluster(),
+        sleeper=_no_sleep,
+    )
+
+    assert verdict.state == GATE_PASSED
+    assert _attributes_of(payload=accepted[0]["payload"]) == {
+        "livespec.gate.outcome": "passed",
+        "livespec.gate.repository": _REPOSITORY,
+        "livespec.gate.tree_hash": _TREE,
+        "livespec.gate.job_name": _JOB,
+        "livespec.gate.queue_wait_seconds": 150.0,
+        "livespec.gate.duration_seconds": 405.0,
+    }

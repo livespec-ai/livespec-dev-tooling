@@ -52,6 +52,8 @@ import time
 import urllib.error
 import urllib.request
 
+from livespec_dev_tooling._gate_outcome_timing import gate_timing_seconds
+
 __all__: list[str] = [
     "DEFAULT_ENDPOINT",
     "ENDPOINT_ENV",
@@ -62,6 +64,7 @@ __all__: list[str] = [
     "build_suite_green_span_payload",
     "emit_gate_outcome",
     "emit_suite_green_outcome",
+    "gate_timing_seconds",
     "post_span",
 ]
 
@@ -85,8 +88,16 @@ _SUITE_GREEN_SANDBOX_DEFAULT_ENDPOINT = "http://172.17.0.1:4318"
 _SUITE_GREEN_SPAN_NAME = "livespec.suite-green.outcome"
 
 
-def build_span_payload(
-    *, outcome: str, repository: str | None, tree_hash: str | None, job_name: str | None
+def build_span_payload(  # noqa: PLR0913 — OTLP fields are independent optional measurements.
+    *,
+    outcome: str,
+    repository: str | None,
+    tree_hash: str | None,
+    job_name: str | None,
+    queue_wait_seconds: float | None = None,
+    duration_seconds: float | None = None,
+    no_verdict_cause: str | None = None,
+    refusal_step: str | None = None,
 ) -> dict[str, object]:
     """Build the OTLP payload for EXACTLY ONE span describing one decided run.
 
@@ -104,7 +115,20 @@ def build_span_payload(
         ("livespec.gate.repository", repository),
         ("livespec.gate.tree_hash", tree_hash),
         ("livespec.gate.job_name", job_name),
+        ("livespec.gate.no_verdict_cause", no_verdict_cause),
+        ("livespec.gate.refusal_step", refusal_step),
     )
+    attributes: list[dict[str, object]] = [
+        {"key": key, "value": {"stringValue": value}}
+        for key, value in identity
+        if value is not None
+    ]
+    for key, value in (
+        ("livespec.gate.queue_wait_seconds", queue_wait_seconds),
+        ("livespec.gate.duration_seconds", duration_seconds),
+    ):
+        if value is not None:
+            attributes.append({"key": key, "value": {"doubleValue": value}})
     now = str(time.time_ns())
     return {
         "resourceSpans": [
@@ -123,11 +147,7 @@ def build_span_payload(
                                 "kind": 1,
                                 "startTimeUnixNano": now,
                                 "endTimeUnixNano": now,
-                                "attributes": [
-                                    {"key": key, "value": {"stringValue": value}}
-                                    for key, value in identity
-                                    if value is not None
-                                ],
+                                "attributes": attributes,
                             }
                         ],
                     }
@@ -160,15 +180,30 @@ def post_span(*, endpoint: str, payload: dict[str, object]) -> None:
         _ = response.read()
 
 
-def emit_gate_outcome(
-    *, outcome: str, repository: str | None, tree_hash: str | None, job_name: str | None
+def emit_gate_outcome(  # noqa: PLR0913 — mirrors the independently optional OTLP fields.
+    *,
+    outcome: str,
+    repository: str | None,
+    tree_hash: str | None,
+    job_name: str | None,
+    queue_wait_seconds: float | None = None,
+    duration_seconds: float | None = None,
+    no_verdict_cause: str | None = None,
+    refusal_step: str | None = None,
 ) -> None:
     """Emit one delegated gate run's outcome event to the configured receiver."""
     endpoint = (os.environ.get(ENDPOINT_ENV) or "").strip() or DEFAULT_ENDPOINT
     post_span(
         endpoint=endpoint,
         payload=build_span_payload(
-            outcome=outcome, repository=repository, tree_hash=tree_hash, job_name=job_name
+            outcome=outcome,
+            repository=repository,
+            tree_hash=tree_hash,
+            job_name=job_name,
+            queue_wait_seconds=queue_wait_seconds,
+            duration_seconds=duration_seconds,
+            no_verdict_cause=no_verdict_cause,
+            refusal_step=refusal_step,
         ),
     )
 

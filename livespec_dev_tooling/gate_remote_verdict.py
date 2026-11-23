@@ -58,7 +58,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from livespec_dev_tooling.gate_remote_client import GateRunOutcome, GateRunRequest, run_gate
+from livespec_dev_tooling.gate_remote_client import (
+    GateRunOutcome,
+    GateRunRequest,
+    run_gate,
+)
 from livespec_dev_tooling.gate_remote_invocation import (
     GateCommandRunner,
     GateStepFailed,
@@ -156,8 +160,12 @@ class GateVerdict:
     token_written: bool
     job_name: str | None = None
     namespace: str | None = None
+    job_created_at: str | None = None
     job_started_at: str | None = None
     job_finished_at: str | None = None
+    job_terminal_at: str | None = None
+    no_verdict_cause: str | None = None
+    refusal_step: str | None = None
     output_checksum: str | None = None
     tree_hash: str | None = None
     member_verdicts: tuple[tuple[str, str], ...] | None = None
@@ -204,6 +212,13 @@ def _no_verdict(*, failure: GateStepFailed) -> GateVerdict:
         state=GATE_NO_VERDICT,
         detail=f"{failure.step} did not complete, so the gate reached no verdict: {failure.detail}",
         token_written=False,
+        job_name=failure.job_name,
+        job_created_at=failure.job_created_at,
+        job_started_at=failure.job_started_at,
+        no_verdict_cause=(
+            "client-interrupted" if "terminated by" in failure.detail else "delegation"
+        ),
+        refusal_step="await-verdict" if failure.job_name is not None else "submit",
     )
 
 
@@ -245,8 +260,10 @@ def _decided(
         token_written=token_written,
         job_name=outcome.job_name,
         namespace=request.namespace,
+        job_created_at=outcome.created_at or None,
         job_started_at=outcome.started_at or None,
         job_finished_at=outcome.finished_at or None,
+        job_terminal_at=outcome.terminal_at or None,
         output_checksum=outcome.output_checksum or None,
         tree_hash=outcome.reported_tree_hash or None,
         member_verdicts=outcome.member_verdicts,
