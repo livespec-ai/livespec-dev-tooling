@@ -63,16 +63,44 @@ commit that contains it, so those reads are keyed to a RELEASE
   modification.
 - The `serving` line prints the newest release, `release vX.Y.Z at HEAD <commit>`; each row that
   classifies through a release claim prints the release its claim named, at that HEAD.
+- A fully determined shared-build row may cite another adopter's authenticated proving incident
+  only when its repository, incident item, and proved release are recorded, and that release is
+  the one this consumer serves. The audit leaves a mismatched or unauthenticated citation
+  unclassified, naming the cited release and serving version read.
 
 On the dev host (2026-11-10) only `livespec-ai/livespec-dev-tooling` is read this way, for both
 capabilities.
+
+## Shared-surface citations
+
+`config/incident-fleet-shared-surfaces.json` is the committed classification for every
+surface. It records whether the released gate-reader, template, or driver-hook build fully
+determines that surface, and names adopter-owned configuration that prevents that conclusion.
+The reader-file test holds the classification to the exact surface roots and inputs its reader
+uses; a claim cannot assert this property for itself.
+
+An implemented, release-keyed claim on a fully determined shared surface may cite the
+authenticated proving incident of another adopter. The citation must name the proving
+repository, incident item, and the release build it proved; that build must be the release the
+consumer serves. The audit re-authenticates the proving record and still independently reads the
+consumer's serving version. A missing coordinate, an unauthenticated record, a different proved
+release, or a changed serving release leaves the row unclassified and names the cited release and
+the serving version read.
+
+A surface that reads adopter configuration cannot borrow proof. For example, `Focused test
+selection` reads the adopter's `.livespec.jsonc` and `[tool.livespec_dev_tooling]` table, so a
+citation on that row remains unclassified and the finding names the consumer, surface, and those
+inputs. Such a row needs its consumer's own authenticated incident evidence (or an applicable
+recorded `not-applicable` reason).
 
 ## The ready list and enablement
 
 A consumer is ready when every row is classified, none is `deliberately-normal`, at least one is
 `implemented`, and all five capabilities were read. A `not-applicable` row needs a recorded reason,
 the manifest identity and a serving version equal to its release build, and never makes a consumer
-ready on its own. `just incident-enable` runs its own fresh audit and, only for a ready
+ready on its own. A citation on a surface that reads adopter configuration cannot make a consumer
+ready: it remains unclassified until that consumer has its own proof or an applicable reason.
+`just incident-enable` runs its own fresh audit and, only for a ready
 repository, writes the enablement record to the controller installation that serves it, through
 that installation's control route (`POST /enablement` on its local listener, with the projected
 `LIVESPEC_INCIDENT_CONTROL_SECRET`; run it through the credential wrapper). The step posts to

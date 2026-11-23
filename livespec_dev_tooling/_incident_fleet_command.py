@@ -159,6 +159,12 @@ def run_fleet_audit(
             ).build_for(surface=row.surface, claimed=row.release_build)
             == row.serving_build
         ),
+        verify_proving_incident=lambda row: (
+            verified(
+                repository=row.proving_repository, capability=capability_of(surface=row.surface)
+            ).build_for(surface=row.surface, claimed=row.proving_release_build)
+            == row.proving_release_build
+        ),
         explain=lambda row: claim_reason(
             reading=served(
                 repository=row.repository, capability=capability_of(surface=row.surface)
