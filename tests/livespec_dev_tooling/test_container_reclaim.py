@@ -53,19 +53,38 @@ case "${1:-}" in
                     $'ghcr.io/example/sandbox\tused-v1.0.0\tsha256:stopped-used' \
                     $'ghcr.io/example/sandbox\tmulti-v1.0.0\tsha256:multi-tagged' \
                     $'ghcr.io/example/sandbox\tmulti-v2.0.0\tsha256:multi-current' \
-                    $'ghcr.io/example/sandbox\tsolo-v1.0.0\tsha256:multi-tagged'
+                    $'ghcr.io/example/sandbox\tsolo-v1.0.0\tsha256:multi-tagged' \
+                    $'ghcr.io/example/sandbox\told-a-v1.0.0\tsha256:multi-old' \
+                    $'ghcr.io/example/sandbox\told-b-v1.0.0\tsha256:multi-old' \
+                    $'ghcr.io/example/sandbox\told-a-v2.0.0\tsha256:old-a-current' \
+                    $'ghcr.io/example/sandbox\told-b-v2.0.0\tsha256:old-b-current'
                 ;;
             inspect)
                 id="${*: -1}"
                 case "$id" in
                     sha256:recent-retagged) printf '%s\t%s\n' "$created" "$recent" ;;
-                    sha256:multi-current) printf '%s\t%s\n' "$newer" "$newer" ;;
+                    sha256:multi-current | sha256:old-a-current | sha256:old-b-current)
+                        printf '%s\t%s\n' "$newer" "$newer" ;;
                     *) printf '%s\t%s\n' "$created" "$created" ;;
                 esac
                 ;;
             rm)
-                for id in "${@:3}"; do
-                    rm -f "$STUB_IMAGE_STATE/${id#sha256:}"
+                for ref in "${@:3}"; do
+                    case "$ref" in
+                        sha256:multi-old)
+                            # Docker refuses an image id that several tags
+                            # reference unless it is forced.
+                            echo "conflict: unable to delete $ref (must be forced)" >&2
+                            exit 1
+                            ;;
+                        ghcr.io/example/sandbox:old-[ab]-v1.0.0)
+                            # Untagging the last reference deletes the image.
+                            printf '%s\n' "$ref" >>"$STUB_IMAGE_STATE/multi-old.untagged"
+                            [[ $(wc -l <"$STUB_IMAGE_STATE/multi-old.untagged") -lt 2 ]] \
+                                || rm -f "$STUB_IMAGE_STATE/multi-old"
+                            ;;
+                        *) rm -f "$STUB_IMAGE_STATE/${ref#sha256:}" ;;
+                    esac
                 done
                 ;;
             prune)
@@ -108,6 +127,9 @@ def _run_image_leg(*, tmp_path: Path) -> None:
         "build-suffixed",
         "multi-tagged",
         "multi-current",
+        "multi-old",
+        "old-a-current",
+        "old-b-current",
     ):
         _ = (image_state / image_id).touch()
     log = tmp_path / "docker.log"
@@ -155,6 +177,9 @@ def _run_image_leg(*, tmp_path: Path) -> None:
     assert (
         image_state / "multi-tagged"
     ).exists(), "an image newest in any one of its series must survive its superseded tags"
+    assert not (
+        image_state / "multi-old"
+    ).exists(), "an aged image superseded in every one of its series must be removed by tag"
     assert (
         image_state / "stopped-used"
     ).exists(), "an image used by a stopped container must survive the image leg"

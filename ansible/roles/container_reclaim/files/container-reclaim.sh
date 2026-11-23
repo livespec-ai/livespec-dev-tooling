@@ -324,7 +324,7 @@ prune_images() {
     local now horizon series line container_image
     local -a remove_ids=()
     local -A used_images=() created_by_id=() age_by_id=()
-    local -A newest_created=() newest_ids=() image_repo=() image_tag=()
+    local -A newest_created=() newest_ids=() image_refs=()
 
     before="$(store_size_mb "${root}")"
     if [[ "${apply}" == "yes" ]]; then
@@ -357,8 +357,13 @@ prune_images() {
         horizon=$(( hours * 3600 ))
         while IFS=$'\t' read -r repo tag id; do
             [[ -n "${repo}" && -n "${tag}" && -n "${id}" ]] || continue
-            image_repo["${id}"]="${repo}"
-            image_tag["${id}"]="${tag}"
+            # `docker image rm <id>` refuses an id several tags reference, so
+            # remember every repository:tag; an untagged image is removed by id.
+            if [[ "${repo}" == '<none>' || "${tag}" == '<none>' ]]; then
+                image_refs["${id}"]+="${id}"$'\n'
+            else
+                image_refs["${id}"]+="${repo}:${tag}"$'\n'
+            fi
             if [[ -z "${created_by_id[${id}]+x}" ]]; then
                 if ! line="$(docker image inspect \
                     --format '{{.Created}}'$'\t''{{.Metadata.LastTagTime}}' "${id}" 2>&1)"; then
@@ -409,15 +414,26 @@ prune_images() {
             remove_ids+=("${id}")
         done <<<"${image_rows}"
 
-        # An image can have several old tags in one series.  `docker image rm`
-        # acts on the image id, so remove each selected id once and narrate the
-        # repository/tag/id which made it eligible.
+        # An image can carry several tags, and `docker image rm <id>` refuses it
+        # unless forced.  Remove each selected image once: by id when it has one
+        # reference, otherwise by every repository:tag it carries, where
+        # untagging the last one deletes the image.
         local -A removed=()
+        local ref
+        local -a refs
         for id in "${remove_ids[@]}"; do
             [[ -n "${removed[${id}]+x}" ]] && continue
             removed["${id}"]=1
-            progress "  removing image: ${image_repo[${id}]}:${image_tag[${id}]} (${id})"
-            docker image rm "${id}" >&2 || warn "  WARNING: image removal failed for ${id}"
+            mapfile -t refs <<<"${image_refs[${id}]%$'\n'}"
+            if (( ${#refs[@]} == 1 )); then
+                progress "  removing image: ${refs[0]} (${id})"
+                docker image rm "${id}" >&2 || warn "  WARNING: image removal failed for ${id}"
+                continue
+            fi
+            for ref in "${refs[@]}"; do
+                progress "  removing image: ${ref} (${id})"
+                docker image rm "${ref}" >&2 || warn "  WARNING: image removal failed for ${ref} (${id})"
+            done
         done
         docker builder prune -af >&2 2>/dev/null || true
         after="$(store_size_mb "${root}")"
