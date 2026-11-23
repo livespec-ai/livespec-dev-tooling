@@ -41,6 +41,11 @@ dev_host_retention_tmp_threshold_percent: 75
 dev_host_retention_bulk_dump_dir: /var/tmp/livespec-dumps
 dev_host_retention_bulk_dump_cap_bytes: 21474836480
 dev_host_retention_capacity_repeat_interval_seconds: 3600
+# A report-only guardrail for linked worktrees under the retention user's home.
+# It intentionally never removes a worktree: its owner decides when a reported
+# merged worktree is no longer needed.
+dev_host_retention_worktree_report_days: 3
+dev_host_retention_worktree_report_threshold_gib: 40
 # The uv cache size cap, in GB (decimals allowed). After the prune, a cache over
 # this that no uv process holds is emptied; a cache under it is left in place.
 dev_host_retention_uv_cache_max_gb: 10

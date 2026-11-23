@@ -58,6 +58,11 @@ UV_OWNERSHIP_BUDGET_SECONDS=${LIVESPEC_DEV_HOST_UV_OWNERSHIP_BUDGET_SECONDS:-900
 UV_CACHE_MAX_GB=${LIVESPEC_DEV_HOST_UV_CACHE_MAX_GB:-10}
 UV_HEALED_UNITS=" "
 RETENTION_STATE_DIR=${LIVESPEC_DEV_HOST_RETENTION_STATE_DIR:-/var/lib/livespec-dev-host-retention}
+WORKTREE_REPORT_DAYS=${LIVESPEC_DEV_HOST_WORKTREE_REPORT_DAYS:-3}
+WORKTREE_REPORT_THRESHOLD_GIB=${LIVESPEC_DEV_HOST_WORKTREE_REPORT_THRESHOLD_GIB:-40}
+WORKTREE_REPORT_REPEAT_SECONDS=${LIVESPEC_DEV_HOST_CAPACITY_REPEAT_SECONDS:-3600}
+NTFY_TOPIC=${LIVESPEC_DEV_HOST_NTFY_TOPIC:-}
+NTFY_SERVER=${LIVESPEC_DEV_HOST_NTFY_SERVER:-https://ntfy.sh}
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 
 log() {
@@ -412,6 +417,94 @@ sweep_checkout_roots() {
     done
 }
 
+# The worktree report is deliberately only an observation.  In particular, do
+# not use `git worktree prune` or `git worktree remove` here: a clean worktree
+# at a merged commit can still be the one its owner is about to resume.
+worktree_is_on_default_branch() {
+    local worktree=$1 default_ref=$2
+    if git -C "$worktree" merge-base --is-ancestor HEAD "$default_ref"; then
+        return 0
+    fi
+    # `git cherry` marks a commit with `+` only if no patch-equivalent commit
+    # exists on the default branch.  Thus no pluses means every local commit
+    # is already represented there, even if it arrived by a different commit.
+    ! git -C "$worktree" cherry "$default_ref" HEAD 2>/dev/null | grep -q '^+'
+}
+
+worktree_default_ref() {
+    local worktree=$1 branch
+    branch=$(git -C "$worktree" ls-remote --symref origin HEAD 2>/dev/null |
+        awk '$1 == "ref:" && $2 ~ /^refs\/heads\// && $3 == "HEAD" {sub("refs/heads/", "", $2); print $2; exit}')
+    [[ -n $branch ]] || return 1
+    printf 'refs/remotes/origin/%s\n' "$branch"
+}
+
+worktree_report_may_notify() {
+    local marker=$1 now last=0
+    now=$(date -u +%s)
+    [[ -f $marker ]] && last=$(cat "$marker" 2>/dev/null || printf 0)
+    ((now - last >= WORKTREE_REPORT_REPEAT_SECONDS))
+}
+
+report_aged_merged_worktrees() {
+    local home root cutoff worktree default_ref index epoch repository branch size_kib
+    local total_kib=0 count=0 threshold_kib marker message
+    home=$(getent passwd "$RETENTION_USER" 2>/dev/null | cut -d: -f6)
+    [[ -n $home ]] || { log "WARNING: cannot resolve home directory for worktree report"; return 0; }
+    root="$home/.worktrees"
+    [[ -d $root ]] || { log "worktree report: no worktree root at $root"; return 0; }
+    [[ $WORKTREE_REPORT_DAYS =~ ^[0-9]+$ ]] || { log "WARNING: invalid worktree report days $WORKTREE_REPORT_DAYS"; return 0; }
+    cutoff=$(( $(date -u +%s) - WORKTREE_REPORT_DAYS * 86400 ))
+
+    while IFS= read -r -d '' worktree; do
+        # A linked worktree has a .git *file*.  A repository copied below the
+        # root has a .git directory and is not part of this report.
+        [[ -f $worktree/.git ]] || continue
+        # `git status` can refresh the index as a side effect.  Preserve its
+        # age before asking Git whether the worktree is clean; otherwise the
+        # report would make every candidate look freshly used itself.
+        index=$(git -C "$worktree" rev-parse --git-path index 2>/dev/null) || continue
+        epoch=$(stat -c %Y -- "$index" 2>/dev/null) || continue
+        ((epoch < cutoff)) || continue
+        [[ -z $(git -C "$worktree" status --porcelain --untracked-files=normal 2>/dev/null) ]] || continue
+        default_ref=$(worktree_default_ref "$worktree") || continue
+        git -C "$worktree" rev-parse --verify --quiet "$default_ref" >/dev/null || continue
+        worktree_is_on_default_branch "$worktree" "$default_ref" || continue
+        size_kib=$(du -sk -- "$worktree" 2>/dev/null | awk '{print $1}') || continue
+        [[ $size_kib =~ ^[0-9]+$ ]] || continue
+        repository=$(git -C "$worktree" remote get-url origin 2>/dev/null || basename "$(dirname "$worktree")")
+        branch=$(git -C "$worktree" symbolic-ref --quiet --short HEAD 2>/dev/null || printf detached)
+        log "worktree report: path=$worktree repository=$repository branch=$branch size=${size_kib}KiB"
+        total_kib=$((total_kib + size_kib))
+        count=$((count + 1))
+    done < <(find "$root" -type f -name .git -printf '%h\0' 2>/dev/null)
+
+    log "worktree report total: count=$count size=${total_kib}KiB"
+    threshold_kib=$(awk -v gib="$WORKTREE_REPORT_THRESHOLD_GIB" 'BEGIN { if (gib !~ /^[0-9]+([.][0-9]+)?$/) exit 1; printf "%.0f", gib * 1048576 }') || {
+        log "WARNING: invalid worktree report threshold $WORKTREE_REPORT_THRESHOLD_GIB GiB"
+        return 0
+    }
+    ((total_kib >= threshold_kib)) || return 0
+    [[ -n $NTFY_TOPIC ]] || { log "WARNING: worktree report threshold reached but no ntfy topic is configured"; return 0; }
+    mkdir -p "$RETENTION_STATE_DIR" 2>/dev/null || {
+        log "WARNING: worktree report threshold reached but notification state directory is unavailable"
+        return 0
+    }
+    marker="$RETENTION_STATE_DIR/worktree-report.last-notified"
+    worktree_report_may_notify "$marker" || {
+        log "worktree report total remains above threshold; repeat interval holds"
+        return 0
+    }
+    message="Dev host worktree report: ${count} merged, clean, aged worktrees total ${total_kib}KiB"
+    if curl --fail --silent --show-error -H 'Title: Dev host worktree report' \
+        -d "$message" "$NTFY_SERVER/$NTFY_TOPIC"; then
+        date -u +%s >"$marker"
+        log "worktree report notification published: count=$count total=${total_kib}KiB"
+    else
+        log "WARNING: worktree report notification failed"
+    fi
+}
+
 log "gate-run retention period: ${RETENTION_DAYS} days; scratch retention: ${SCRATCH_RETENTION_SECONDS}s"
 report_free_space before "$FILESYSTEM"
 report_free_space before /tmp
@@ -419,6 +512,7 @@ prune_docker_images
 prune_uv_cache
 enforce_uv_cache_cap
 sweep_checkout_roots
+report_aged_merged_worktrees
 if declare -F reclaim_scratch_and_bulk >/dev/null; then
     reclaim_scratch_and_bulk "$TMP_ROOT" "$SCRATCH_RETENTION_SECONDS" "$BULK_DUMP_DIR" "$BULK_DUMP_CAP_BYTES"
 fi
