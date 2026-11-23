@@ -56,6 +56,9 @@ if ((${#stale[@]} == 0)); then
 fi
 [[ -n "${alert_state}" ]] || exit 1
 
+# A stale collection is a tenant set: preserve a canonical ordering in the
+# state file so harmless command-line reordering does not send a new alert.
+mapfile -t stale < <(printf '%s\n' "${stale[@]}" | LC_ALL=C sort)
 current="${stale[*]}"
 previous=''
 alerted=0
