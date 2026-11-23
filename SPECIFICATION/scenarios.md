@@ -3974,6 +3974,17 @@ And an HTTP 404 answer whose body is JSON MUST fail the read at its first attemp
 And when GitHub answers every attempt of ci-green's read of its own run's jobs with an HTTP 5xx status, ci-green MUST fail closed after six attempts, naming that read.
 ```
 
+## Scenario: the incident CI entrance provisions locked pyright before it launches any member
+
+```gherkin
+Given an incident CI plan that selects two members which both invoke pyright, in a repository whose lock pins pyright, on a runner whose pyright cache is cold
+When the incident CI entrance executes the plan
+Then the entrance MUST complete the locked pyright provisioning exactly once before it launches either member
+And it MUST launch neither member until that provisioning has completed
+And when the provisioning fails, the entrance MUST launch no member, MUST print one line naming the provisioning and its failure, and MUST fail the job
+And in a repository whose lock does not pin pyright, the entrance MUST launch its members without attempting any pyright provisioning.
+```
+
 ## Scenario: an incident label event's forge writes repeat only what did not take effect
 
 ```gherkin

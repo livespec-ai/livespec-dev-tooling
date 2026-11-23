@@ -2032,6 +2032,13 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: the incident CI entrance provisions locked pyright before it launches any member",
+    "work_item": "livespec-dev-tooling-xdt4ue",
+    "first_seen": "2026-11-23"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: the incident enablement step records enablement on the independent controller and every vantage reads it",
     "work_item": "livespec-dev-tooling-2xxnku",
     "first_seen": "2026-11-12"

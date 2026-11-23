@@ -3955,6 +3955,14 @@
   {
     "spec_root": "SPECIFICATION",
     "spec_file": "scenarios.md",
+    "heading": "## Scenario: the incident CI entrance provisions locked pyright before it launches any member",
+    "test": "TODO",
+    "reason": "Spec-first (v264): a real test at the integration tier or above is owed for this heading, running the incident CI entrance over a plan that selects two pyright-invoking members in a repository whose lock pins pyright: the locked pyright provisioning completes exactly once before either member launches, a failed provisioning launches no member, prints one line naming the provisioning and its failure and fails the job, and a repository whose lock does not pin pyright launches its members with no provisioning attempt. livespec-dev-tooling-xdt4ue owns it.",
+    "work_item": "livespec-dev-tooling-xdt4ue"
+  },
+  {
+    "spec_root": "SPECIFICATION",
+    "spec_file": "scenarios.md",
     "heading": "## Scenario: an incident label event's forge writes repeat only what did not take effect",
     "test": "TODO",
     "reason": "Spec-first: a real test at the integration tier or above is owed for this scenario: the committed incident label workflow script runs under bash with the forge-read Action's command against a stub gh, and the hold create, cancel and re-run are repeated only as the scenario states. livespec-dev-tooling-levu6j owns it.",
