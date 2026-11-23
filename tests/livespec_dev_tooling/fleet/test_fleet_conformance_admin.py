@@ -243,6 +243,20 @@ def test_admin_lane_fails_loud_when_the_manifest_is_unavailable(
     assert fleet_conformance_admin.main() == 1
 
 
+def test_no_fleet_test_reads_the_sandbox_interim_inputs_file() -> None:
+    """Every fleet test starts with the interim refresh root pointed at a path holding nothing.
+
+    A factory sandbox provides the wrapper's owner-only inputs file at the DEFAULT root, so a test
+    that reaches the admin lane's `main()` without naming a root reads out-of-vantage and flips its
+    verdict: `test_admin_lane_fails_loud_when_the_owner_is_unresolvable` returned 0, not 1, in
+    every livespec-dev-tooling janitor (livespec-dev-tooling-pugkxg). The isolation is a property
+    of the whole fleet test directory, so no test can forget it, and the plugins-root fallback is
+    cleared so the default root cannot resolve either.
+    """
+    assert os.environ["LIVESPEC_SANDBOX_GH_REFRESH_ROOT"] == "/nonexistent/livespec-gh-refresh"
+    assert "LIVESPEC_SANDBOX_CLAUDE_PLUGINS_ROOT" not in os.environ
+
+
 def test_admin_lane_fails_loud_when_the_owner_is_unresolvable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
