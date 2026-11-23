@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from livespec_dev_tooling._incident_fleet_capabilities import SURFACE_CAPABILITY
+from livespec_dev_tooling._incident_fleet_capabilities import GUIDANCE_SURFACES, SURFACE_CAPABILITY
 from livespec_dev_tooling._incident_fleet_row_gap import RowReaders, row_gap
 from livespec_dev_tooling._incident_fleet_shared_surface import shared_surface_determination
 from livespec_dev_tooling._incident_fleet_types import CapabilityEvidence
@@ -42,6 +42,7 @@ def _authentication_gap(
     claim: CapabilityEvidence,
     proving: CapabilityEvidence | None,
     manifest_sha256: str,
+    instruction_only: bool,
     readers: RowReaders,
 ) -> str:
     """Why the cited incident's committed record does not authenticate; "" when it does."""
@@ -57,8 +58,8 @@ def _authentication_gap(
     return row_gap(
         claim=proving,
         manifest_sha256=manifest_sha256,
-        instruction_only=False,
-        inapplicable=False,
+        instruction_only=instruction_only,
+        inapplicable=instruction_only and proving.surface not in GUIDANCE_SURFACES,
         readers=readers,
     )
 
@@ -69,6 +70,7 @@ class _CitationReader:
 
     indexed: Mapping[tuple[str, str], CapabilityEvidence]
     manifest_sha256: str
+    instruction_only: frozenset[str]
     own: RowReaders
 
     def __call__(self, claim: CapabilityEvidence) -> str:
@@ -85,6 +87,7 @@ class _CitationReader:
             claim=claim,
             proving=self.indexed.get((claim.proving_repository, claim.surface)),
             manifest_sha256=self.manifest_sha256,
+            instruction_only=claim.proving_repository in self.instruction_only,
             readers=self.own,
         )
         if why:
@@ -102,11 +105,18 @@ def citation_reader(
     manifest_sha256: str,
     confirmed: Callable[[CapabilityEvidence], bool],
     explain: Callable[[CapabilityEvidence], str],
+    instruction_only: frozenset[str],
 ) -> Callable[[CapabilityEvidence], str]:
     """A reader naming why a citing claim may not classify; "" when it may.
 
     `indexed` holds every committed claim by (consumer, surface), each carrying the serving
-    build read for it, so the cited incident is judged exactly as its own adopter's claim is.
+    build read for it, and `instruction_only` the repositories whose profile carries guidance
+    surfaces only, so the cited incident is judged exactly as its own adopter's claim is.
     """
     own = RowReaders(confirmed=confirmed, explain=explain, citation=lambda _claim: _NO_CITATION)
-    return _CitationReader(indexed=indexed, manifest_sha256=manifest_sha256, own=own)
+    return _CitationReader(
+        indexed=indexed,
+        manifest_sha256=manifest_sha256,
+        instruction_only=instruction_only,
+        own=own,
+    )

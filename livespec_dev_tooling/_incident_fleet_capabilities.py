@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
-__all__: list[str] = ["CAPABILITIES", "SURFACE_CAPABILITY"]
+__all__: list[str] = ["CAPABILITIES", "GUIDANCE_SURFACES", "SURFACE_CAPABILITY"]
 
 # EXPEDITED_INCIDENT_RESPONSE flag: livespec-dev-tooling-3wcldx
 # The contracts.md expedited-incident clause says incident use requires serving-version
@@ -17,6 +17,11 @@ CAPABILITIES: tuple[str, ...] = (
     "driver-hooks",
     "recovery-authorization",
     "independent-controller",
+)
+
+# The only surfaces an instruction-only adopter carries; every other one is a runtime obligation.
+GUIDANCE_SURFACES: frozenset[str] = frozenset(
+    {"Agent tool and stop guards", "Operator factory routing"}
 )
 
 SURFACE_CAPABILITY: Mapping[str, str] = MappingProxyType(

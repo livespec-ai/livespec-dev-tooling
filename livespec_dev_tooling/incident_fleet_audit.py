@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from dataclasses import replace
 
-from livespec_dev_tooling._incident_fleet_capabilities import SURFACE_CAPABILITY
+from livespec_dev_tooling._incident_fleet_capabilities import GUIDANCE_SURFACES, SURFACE_CAPABILITY
 from livespec_dev_tooling._incident_fleet_citation import citation_reader
 from livespec_dev_tooling._incident_fleet_row_gap import RowReaders, row_gap
 from livespec_dev_tooling._incident_fleet_types import (
@@ -62,7 +62,6 @@ SURFACES: tuple[str, ...] = (
 )
 
 
-_GUIDANCE_SURFACES = frozenset({"Agent tool and stop guards", "Operator factory routing"})
 # The consumer's own incident installation; every other capability is a shared build.
 _OWN_INSTALLATION = frozenset({"independent-controller", "recovery-authorization"})
 
@@ -117,7 +116,7 @@ def _consumer_rows(
     rows: list[SurfaceDisposition] = []
     for surface in SURFACES:
         evidence = indexed.get((repository, surface))
-        inapplicable = instruction_only and surface not in _GUIDANCE_SURFACES
+        inapplicable = instruction_only and surface not in GUIDANCE_SURFACES
         if inapplicable and evidence is None:
             rows.append(
                 SurfaceDisposition(
@@ -221,6 +220,9 @@ def audit_incident_fleet(
             manifest_sha256=manifest_sha256,
             confirmed=verify_evidence,
             explain=explain,
+            instruction_only=frozenset(
+                repository for repository, guidance_only in consumers if guidance_only
+            ),
         ),
     )
     rows = tuple(
