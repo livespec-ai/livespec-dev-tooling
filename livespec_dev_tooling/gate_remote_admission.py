@@ -45,6 +45,7 @@ _AWAIT_STEP = "await-gate-terminal"
 _ADMITTED_CONDITIONS = frozenset({"Admitted", "Started"})
 _ASSERTED = "True"
 Clock = Callable[[], float]
+StatusObserver = Callable[[Mapping[str, object]], None]
 
 
 def await_terminal_state(
@@ -54,6 +55,7 @@ def await_terminal_state(
     sleeper: Sleeper,
     job_name: str,
     clock: Clock = time.monotonic,
+    observe_status: StatusObserver | None = None,
 ) -> Result[Terminal, GateStepFailed]:
     """Wait through admission, then watch the Job within its independent budget."""
     argv = admission_read_argv(namespace=request.namespace, job_name=job_name)
@@ -64,6 +66,7 @@ def await_terminal_state(
         runner=runner,
         sleeper=nap,
         job_name=job_name,
+        observe_status=observe_status,
     )
     if isinstance(admitted, Failure):
         return Failure(admitted.failure())
@@ -77,6 +80,7 @@ def await_terminal_state(
         sleeper=nap,
         job_name=job_name,
         clock=clock,
+        observe_status=observe_status,
     )
 
 
@@ -87,6 +91,7 @@ def _await_admission(
     runner: GateCommandRunner,
     sleeper: Sleeper,
     job_name: str,
+    observe_status: StatusObserver | None,
 ) -> Result[Terminal | None, GateStepFailed]:
     """Wait for an admission signal, retaining a terminal state read during it."""
     last_refusal: GateStepFailed | None = None
@@ -111,6 +116,7 @@ def _await_admission(
             if isinstance(terminal, Failure):
                 return Failure(terminal.failure())
             ended = terminal.unwrap()
+            _observe_status(payload=read.unwrap().stdout, observe_status=observe_status)
             if ended is not None:
                 return Success(ended)
             if _admission_observed(payload=read.unwrap().stdout):
@@ -129,7 +135,7 @@ def _await_admission(
     )
 
 
-def _await_terminal(
+def _await_terminal(  # noqa: PLR0913 — the wait seams stay independently injectable.
     *,
     argv: list[str],
     request: GateRunRequest,
@@ -137,6 +143,7 @@ def _await_terminal(
     sleeper: Sleeper,
     job_name: str,
     clock: Clock,
+    observe_status: StatusObserver | None,
 ) -> Result[Terminal, GateStepFailed]:
     """Watch an admitted Job, re-arming windows and transient failures to its deadline."""
     last_refusal: GateStepFailed | None = None
@@ -172,6 +179,7 @@ def _await_terminal(
             if isinstance(terminal, Failure):
                 return Failure(terminal.failure())
             ended = terminal.unwrap()
+            _observe_status(payload=read.unwrap().stdout, observe_status=observe_status)
             if ended is not None:
                 return Success(ended)
         if not window_spent and attempt + 1 < attempts and deadline > clock():
@@ -198,3 +206,11 @@ def _admission_observed(*, payload: str) -> bool:
         condition.get("type") in _ADMITTED_CONDITIONS and condition.get("status") == _ASSERTED
         for condition in conditions
     )
+
+
+def _observe_status(*, payload: str, observe_status: StatusObserver | None) -> None:
+    """Offer each readable Job status to the caller without affecting its wait."""
+    if observe_status is None:
+        return
+    document = cast("Mapping[str, Mapping[str, object]]", json.loads(payload))
+    observe_status(document.get("status", {}))

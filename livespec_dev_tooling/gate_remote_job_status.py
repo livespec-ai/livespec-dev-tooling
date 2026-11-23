@@ -23,9 +23,11 @@ __all__: list[str] = [
     "COMPLETE_CONDITION",
     "Terminal",
     "created_job_name",
+    "created_job_time",
     "created_job_tree_hash",
     "reported_time",
     "terminal_condition",
+    "terminal_transition_time",
     "unreadable",
 ]
 
@@ -99,10 +101,27 @@ def created_job_tree_hash(*, payload: str) -> str:
     return reported if isinstance(reported, str) else ""
 
 
+def created_job_time(*, payload: str) -> str:
+    """Return the API server's creation timestamp, or empty when it was omitted."""
+    parsed = cast("_JobPayload", json.loads(payload))
+    created = parsed.get("metadata", {}).get("creationTimestamp")
+    return created if isinstance(created, str) else ""
+
+
 def reported_time(*, status: Mapping[str, object], key: str) -> str:
     """Return a Job clock reading, or an empty string when the Job omitted it."""
     reading = status.get(key)
     return reading if isinstance(reading, str) else ""
+
+
+def terminal_transition_time(*, status: Mapping[str, object], condition: str) -> str:
+    """Return the terminal condition's API-server timestamp, or empty when absent."""
+    conditions = cast("_Conditions", status.get("conditions", ()))
+    for candidate in conditions:
+        if candidate.get("type") == condition and candidate.get("status") == _CONDITION_ASSERTED:
+            transitioned = candidate.get("lastTransitionTime")
+            return transitioned if isinstance(transitioned, str) else ""
+    return ""
 
 
 def terminal_condition(
