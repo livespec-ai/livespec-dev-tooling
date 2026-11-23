@@ -58,6 +58,13 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.236.2](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.1...v1.236.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* **incident:** an expedited repair publishes a workflow path only under a maintainer-attested scope (livespec-dev-tooling-jtuxzn) ([e1169fa](https://github.com/livespec-ai/livespec-dev-tooling/commit/e1169fa5b069e8eada43393d972906cc65a23755))
+
 ## [1.236.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.0...v1.236.1) (2026-11-23)
 
 
