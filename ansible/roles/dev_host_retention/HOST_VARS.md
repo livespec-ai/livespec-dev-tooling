@@ -87,6 +87,8 @@ with no installed runner is SKIPPED and says so.
 | `dev_host_retention_alert_ledger_dir` | `/home/ubuntu/workspace/livespec-dev-tooling` | the ledger checkout the root unit runs `bd` from |
 | `dev_host_retention_alert_ledger_wrapper` | `/usr/local/bin/with-livespec-env.sh` | the credential wrapper; if it or the checkout is unreachable the check logs a WARNING and alerts by ntfy only |
 | `dev_host_retention_capacity_repeat_interval_seconds` | `3600` | one-hour minimum interval between repeated capacity notifications per filesystem |
+| `dev_host_retention_worktree_report_days` | `3` | whole days a clean, merged linked worktree's Git index must be old before the daily retention run reports it; it never removes the worktree |
+| `dev_host_retention_worktree_report_threshold_gib` | `40` | total reported worktree size at which the run sends one ntfy notification; repeat notices use `dev_host_retention_capacity_repeat_interval_seconds` |
 | `dev_host_retention_user` | `root` | the login the retention runs as; see below, it is the one value the dev host must set |
 | `dev_host_retention_uv_bin` | `/usr/bin/uv` | absolute path to the uv executable the retention invokes while pruning that user's cache |
 | `dev_host_retention_uv_installs_dir` | `/home/<user>/.local/share/mise/installs/uv` | read only to list the installed mise uv versions when the converge refuses a missing `dev_host_retention_uv_bin` |
