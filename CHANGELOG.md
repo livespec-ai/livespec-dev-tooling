@@ -58,6 +58,15 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.236.3](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.2...v1.236.3) (2026-11-23)
+
+
+### Bug Fixes
+
+* **fleet:** the admin conformance lane is out-of-vantage in the interim reader context, keyed on the wrapper's owner-only inputs file (bd-ib-zf2kdh) ([e0147d7](https://github.com/livespec-ai/livespec-dev-tooling/commit/e0147d71aa3d11b9bce48872c7cc1e617a1f9201))
+* **test:** no admin-lane test depends on the sandbox's interim inputs file (livespec-dev-tooling-pugkxg) ([e59c887](https://github.com/livespec-ai/livespec-dev-tooling/commit/e59c887628a2d9272cfa9c2a48e3083f9ec18568))
+* the dev host retention bulk-dump cap walks the dump directory once per pass, not once per removed file (livespec-dev-tooling-ng6ka4) ([636c7d5](https://github.com/livespec-ai/livespec-dev-tooling/commit/636c7d5807b7a179c074c52f7c92887bb7f9e3da))
+
 ## [1.236.2](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.1...v1.236.2) (2026-11-23)
 
 
