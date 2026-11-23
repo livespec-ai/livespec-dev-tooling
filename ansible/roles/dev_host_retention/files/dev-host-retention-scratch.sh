@@ -129,19 +129,44 @@ bulk_dump_is_root_filesystem() {
 }
 
 cap_bulk_dumps() {
-    local directory=$1 cap=$2 total line path
+    local directory=$1 cap=$2 total line remainder size path
+    local -a oldest_first=()
     [[ -d $directory ]] || return 0
     if ! bulk_dump_is_root_filesystem "$directory"; then
         log "REFUSE bulk-dump directory $directory: it is not on the root filesystem or is tmpfs"
         return 0
     fi
     total=$(du -sb -- "$directory" 2>/dev/null | awk '{print $1}') || return 0
-    while ((total > cap)); do
-        line=$(find "$directory" -type f -printf '%T@:%p\0' | sort -z -n | { IFS= read -r -d '' item || true; printf '%s' "$item"; })
-        [[ -n $line ]] || break
-        path=${line#*:}
-        rm -f -- "$path" && log "removed bulk dump $path (oldest first)"
-        total=$(du -sb -- "$directory" 2>/dev/null | awk '{print $1}') || break
+    ((total > cap)) || return 0
+
+    # Build one oldest-first snapshot.  Re-walking a large dump directory for
+    # every deletion can outlast the retention unit, leaving the cap unrestored.
+    # The recorded size lets the loop adjust its initial total without another
+    # directory walk after each successful removal.
+    mapfile -d '' -t oldest_first < <(
+        find "$directory" -type f -printf '%T@:%s:%p\0' 2>/dev/null | sort -z -n
+    )
+    wait "$!"
+    for line in "${oldest_first[@]}"; do
+        ((total > cap)) || break
+        remainder=${line#*:}
+        size=${remainder%%:*}
+        path=${remainder#*:}
+        if [[ ! $size =~ ^[0-9]+$ || -z $path ]]; then
+            log "WARNING: skipped bulk dump with unreadable snapshot entry"
+            continue
+        fi
+        if [[ ! -e $path ]]; then
+            total=$((total - size))
+            log "WARNING: skipped bulk dump $path: it vanished"
+            continue
+        fi
+        if rm -- "$path" 2>/dev/null; then
+            total=$((total - size))
+            log "removed bulk dump $path (oldest first)"
+        else
+            log "WARNING: skipped bulk dump $path: it could not be removed"
+        fi
     done
 }
 

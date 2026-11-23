@@ -476,6 +476,148 @@ def test_retention_reclaims_dead_tmp_scratch_pytest_and_oldest_bulk_dumps(
     assert "free space after:" in done.stdout
 
 
+def test_retention_caps_two_thousand_bulk_dumps_with_fixed_directory_walks(
+    *, tmp_path: Path
+) -> None:
+    """Capping 1,000 dumps walks the bulk directory a fixed number of times.
+
+    The fixture uses one-byte files and a deterministic total of 2,000 bytes,
+    requiring removal of precisely the oldest half. The bulk `find` shim only
+    serves its real listing once: a legacy second listing becomes empty and
+    fails quickly on the excess command count, while a one-listing
+    implementation still processes all 2,000 real files.
+    """
+    assert _RETENTION.is_file(), "the committed retention script must implement bulk capping"
+    (_ROOT / "tmp").mkdir(exist_ok=True)
+    bulk = Path(
+        tempfile.mkdtemp(
+            prefix="retention-bulk-fixed-walks-",
+            dir=_on_root_filesystem(candidates=(tmp_path, _ROOT / "tmp")),
+        )
+    )
+    for index in range(2000):
+        dump = bulk / f"dump-{index:04d}.jsonl"
+        dump.write_bytes(b"x")
+        os.utime(dump, ns=(1_000_000_000 + index, 1_000_000_000 + index))
+    exec_log = tmp_path / "exec.log"
+    environment = _hermetic_env(tmp_path=tmp_path, tmp_root=tmp_path / "tmp", bulk=bulk)
+    environment["PATH"] = _exec_counting_path(
+        shim_dir=tmp_path / "exec-shims", path=environment["PATH"], log=exec_log
+    )
+    environment["EXEC_LOG"] = str(exec_log)
+    environment["LIVESPEC_DEV_HOST_UV_CACHE_DIR"] = str(tmp_path / "missing-uv-cache")
+    _stub(
+        directory=tmp_path / "exec-shims",
+        name="du",
+        body="#!/bin/sh\nprintf '%s\\n' du >> \"$EXEC_LOG\"\nprintf '2000\\t%s\\n' \"$3\"\n",
+    )
+    real_find = shutil.which("find")
+    assert real_find is not None
+    bulk_find_state = tmp_path / "bulk-find-seen"
+    _stub(
+        directory=tmp_path / "exec-shims",
+        name="find",
+        body=(
+            "#!/bin/sh\nprintf '%s\\n' find >> \"$EXEC_LOG\"\n"
+            f'if [ "$1" = {shlex.quote(str(bulk))} ]; then\n'
+            f"    if [ -e {shlex.quote(str(bulk_find_state))} ]; then exit 0; fi\n"
+            f"    : > {shlex.quote(str(bulk_find_state))}\n"
+            "fi\n"
+            f'exec {shlex.quote(real_find)} "$@"\n'
+        ),
+    )
+    environment["LIVESPEC_DEV_HOST_BULK_DUMP_CAP_BYTES"] = "1000"
+
+    try:
+        done = run_under_hang_guard(
+            ["bash", str(_RETENTION)],
+            env=environment,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        remaining = {path.name for path in bulk.iterdir()}
+    finally:
+        shutil.rmtree(bulk)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    started = Counter(exec_log.read_text(encoding="utf-8").splitlines())
+    assert started["du"] == 1 and started["find"] == 2, (
+        "a 2,000-file bulk cap must start one du and one bulk find, plus the "
+        f"liveness find; started {started['du']} du and {started['find']} find processes"
+    )
+    assert remaining == {f"dump-{index:04d}.jsonl" for index in range(1000, 2000)}
+
+
+def test_retention_bulk_cap_counts_a_vanished_snapshot_file_against_the_total(
+    *, tmp_path: Path
+) -> None:
+    """A snapshot file that vanished is logged, skipped, and still leaves the total.
+
+    The directory shrank by the vanished file's recorded size, so the cap must
+    subtract it and stop once the remaining files fit, rather than removing a
+    newer file the cap no longer requires removing.
+    """
+    assert _RETENTION.is_file(), "the committed retention script must implement bulk capping"
+    (_ROOT / "tmp").mkdir(exist_ok=True)
+    bulk = Path(
+        tempfile.mkdtemp(
+            prefix="retention-bulk-vanished-",
+            dir=_on_root_filesystem(candidates=(tmp_path, _ROOT / "tmp")),
+        )
+    )
+    for index in range(10):
+        dump = bulk / f"dump-{index:02d}.bin"
+        dump.write_bytes(b"x" * 100)
+        os.utime(dump, ns=(1_000_000_000 + index, 1_000_000_000 + index))
+    environment = _hermetic_env(tmp_path=tmp_path, tmp_root=tmp_path / "tmp", bulk=bulk)
+    shim_dir = tmp_path / "vanish-shims"
+    shim_dir.mkdir()
+    environment["PATH"] = f"{shim_dir}{os.pathsep}{environment['PATH']}"
+    environment["LIVESPEC_DEV_HOST_UV_CACHE_DIR"] = str(tmp_path / "missing-uv-cache")
+    # The measured total still counts the 300-byte file listed in the snapshot
+    # that is gone by the time the loop reaches it.
+    _stub(
+        directory=shim_dir,
+        name="du",
+        body="#!/bin/sh\nprintf '1300\\t%s\\n' \"$3\"\n",
+    )
+    real_find = shutil.which("find")
+    assert real_find is not None
+    gone = bulk / "dump-gone.bin"
+    _stub(
+        directory=shim_dir,
+        name="find",
+        body=(
+            "#!/bin/sh\n"
+            f'if [ "$1" = {shlex.quote(str(bulk))} ]; then\n'
+            f"    printf '1:300:%s\\0' {shlex.quote(str(gone))}\n"
+            "fi\n"
+            f'exec {shlex.quote(real_find)} "$@"\n'
+        ),
+    )
+    environment["LIVESPEC_DEV_HOST_BULK_DUMP_CAP_BYTES"] = "700"
+
+    try:
+        done = run_under_hang_guard(
+            ["bash", str(_RETENTION)],
+            env=environment,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        remaining = {path.name for path in bulk.iterdir()}
+    finally:
+        shutil.rmtree(bulk)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert f"skipped bulk dump {gone}: it vanished" in done.stdout, done.stdout
+    assert remaining == {f"dump-{index:02d}.bin" for index in range(3, 10)}, (
+        "the vanished 300 bytes count toward the cap, so exactly the three oldest "
+        f"real files go; remaining {sorted(remaining)}"
+    )
+
+
 def test_capacity_check_alerts_tmp_once_without_alerting_root(*, tmp_path: Path) -> None:
     """The repeat state prevents a full tmpfs from paging every 15 minutes."""
     assert _CAPACITY.is_file(), "the committed capacity check must exist"
