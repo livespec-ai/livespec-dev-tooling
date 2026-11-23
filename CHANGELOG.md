@@ -58,6 +58,17 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.236.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.0...v1.236.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **ansible:** the reconcile_runs HOST_VARS.md names what the dev-host memory-bounds drop-in sets (livespec-dev-tooling-elejm2) ([fa10e82](https://github.com/livespec-ai/livespec-dev-tooling/commit/fa10e825db7b5fb3536f90606283d5791815cd6b))
+* **incident:** a chain the orchestrator retired reads as closed to the merge principal (livespec-dev-tooling-s7yiut) ([3607f7e](https://github.com/livespec-ai/livespec-dev-tooling/commit/3607f7edc20673c301622334b067c6a3e7356c5f))
+* **incident:** the merge principal records the master-run window and its deadline in the merged comment (livespec-dev-tooling-bm5bb5) ([ffbc2f9](https://github.com/livespec-ai/livespec-dev-tooling/commit/ffbc2f9cc01ec34ce22cddbacde00bc822b349fe))
+* **incident:** the observer bind finds the master push run itself when no run id is supplied (livespec-dev-tooling-bm5bb5) ([9813caa](https://github.com/livespec-ai/livespec-dev-tooling/commit/9813caa96e59b1da6b203322733e23b461292cfa))
+* **incident:** the post-merge bind looks the master push run up for a merge sha through the window rule (livespec-dev-tooling-bm5bb5) ([82761bf](https://github.com/livespec-ai/livespec-dev-tooling/commit/82761bf79bb7137912a79a488c55c8e1f253f926))
+
 ## [1.236.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.235.1...v1.236.0) (2026-11-23)
 
 
