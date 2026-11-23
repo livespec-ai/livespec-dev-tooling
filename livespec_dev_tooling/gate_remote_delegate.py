@@ -79,16 +79,16 @@ from collections.abc import Callable
 from pathlib import Path
 
 from livespec_dev_tooling import _gate_remote_request_inputs as request_inputs
-from livespec_dev_tooling._gate_authority_skip import authority_skip_resolution
+from livespec_dev_tooling._gate_declared_render_flags import declared_render_flags
 from livespec_dev_tooling._gate_enabled_answer import GATED_LOCALLY, enabled_answer
 from livespec_dev_tooling._gate_host_authority import (
     host_authority_decision,
     narrate_host_authority_passes,
     run_host_authority_members,
 )
+from livespec_dev_tooling._gate_outcome_emission import emit_outcome
 from livespec_dev_tooling._gate_remote_assembly import (
     assembly_refusal,
-    declared_gate_job_resources,
     gate_ref_tree_hash,
     gate_repo_name,
     per_run_gate_ref,
@@ -190,30 +190,6 @@ _GATE_OUTCOMES = {GATE_PASSED: GATE_OUTCOME_PASSED, GATE_FAILED: GATE_OUTCOME_FA
 # identical once they have completed.
 
 
-def _declared_render_flags(
-    *, repo_root: Path
-) -> Result[tuple[tuple[str, ...], tuple[str, ...]], GateStepFailed]:
-    """The renderer flags this repository's own declarations decide.
-
-    Two reads of the repository, each of which can refuse the run before
-    anything is rendered: the authority-skip members the pushing host runs
-    instead of the Job, and the gate Job resources the repository declares.
-    """
-    authority_skip = authority_skip_resolution(repo_root=repo_root)
-    if authority_skip.refusal is not None:
-        return Failure(
-            GateStepFailed(
-                step=_AUTHORITY_SKIP_STEP,
-                argv=(),
-                returncode=None,
-                detail=authority_skip.refusal,
-            )
-        )
-    return declared_gate_job_resources(repo_root=repo_root).map(
-        lambda resources: (authority_skip.argv, resources)
-    )
-
-
 def gate_remote_request(  # noqa: PLR0913 — every keyword is an independent input of the one request the gate Job is rendered from.
     *,
     repo_root: Path,
@@ -257,7 +233,7 @@ def gate_remote_request(  # noqa: PLR0913 — every keyword is an independent in
         return Failure(inputs.failure())
     declared_suite, private_siblings, private_sibling_token = inputs.unwrap()
     suite = check_suite if check_suite is not None else declared_suite
-    declared_flags = _declared_render_flags(repo_root=repo_root)
+    declared_flags = declared_render_flags(repo_root=repo_root, refusal_step=_AUTHORITY_SKIP_STEP)
     if isinstance(declared_flags, Failure):
         return Failure(declared_flags.failure())
     authority_skip_argv, resource_argv = declared_flags.unwrap()
@@ -359,12 +335,21 @@ def run_delegated_gate(
         # event carries the outcome alone. Absent, per the contract, rather
         # than re-derived here: a second read of a repository whose first read
         # has just failed is a guess dressed as a measurement.
-        emit(outcome=GATE_OUTCOME_NO_VERDICT, repository=None, tree_hash=None, job_name=None)
-        return GateVerdict(
+        verdict = GateVerdict(
             state=GATE_NO_VERDICT,
             detail=assembly_refusal(failure=failure),
             token_written=False,
+            no_verdict_cause="delegation",
+            refusal_step="assemble",
         )
+        emit_outcome(
+            emit=emit,
+            outcome=GATE_OUTCOME_NO_VERDICT,
+            repository=None,
+            tree_hash=None,
+            verdict=verdict,
+        )
+        return verdict
     request = built.unwrap()
     tree_hash = gate_ref_tree_hash(gate_ref=request.gate_ref)
     # The authority half, BEFORE the Job is submitted — the contract's own
@@ -391,11 +376,12 @@ def run_delegated_gate(
     # push that the pushing host then refuses therefore reports `passed`, which
     # is what the contract's Telemetry bullet requires of every green verdict on
     # which the push is still refused.
-    emit(
+    emit_outcome(
+        emit=emit,
         outcome=_GATE_OUTCOMES.get(verdict.state, GATE_OUTCOME_NO_VERDICT),
         repository=request.mirror_url.rsplit("/", maxsplit=1)[-1].removesuffix(".git"),
         tree_hash=tree_hash,
-        job_name=verdict.job_name,
+        verdict=verdict,
     )
     # A Job verdict that already refuses is returned AS ITSELF. The push is
     # refused either way, and the gate's own answer — a red tree, a lost cluster
