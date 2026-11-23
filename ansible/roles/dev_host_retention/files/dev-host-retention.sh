@@ -425,7 +425,7 @@ sweep_checkout_roots() {
 worktree_default_ref() {
     local worktree=$1 remote=$2 symref branch local_ref local_oid remote_oid
     symref=$(git -C "$worktree" ls-remote --symref "$remote" HEAD 2>/dev/null \
-        | awk '$1 == "ref:" && $2 ~ /^refs\/heads\// && $3 == "HEAD" { print $2; exit }')
+        | awk '$1 == "ref:" && $2 ~ /^refs\/heads\// && $3 == "HEAD" { print $2 }')
     [[ -n $symref ]] || return 1
     branch=${symref#refs/heads/}
     local_ref="refs/remotes/$remote/$branch"
