@@ -302,19 +302,128 @@ prune_containers() {
 
 prune_images() {
     # SECONDARY LEVER, and it is the smaller half: on vps ~9 GB of image layers
-    # against ~33.8 GB of exited-container writable layers. An image referenced
-    # by a running container is never removed by `image prune -a`, which is the
-    # property that let the hp hotfix reclaim 390 GB with eight dispatches live.
+    # against ~33.8 GB of exited-container writable layers. Do not delegate the
+    # selection to `docker image prune --filter until`: that keys age on Created
+    # and cannot preserve the newest image in each repository/tag series.
+    #
+    # The explicit inventory pass below fails closed when Docker cannot answer.
+    # In particular, it includes stopped containers: their image references are
+    # just as protective as those of running containers.
     local hours="$1" apply="$2" before after root="$3"
+    local inventory used_images candidates newest now image_list container_ids
+    local repository tag image_id ignored created last_tagged created_epoch tagged_epoch
+    local age_epoch series key current newest_id newest_created protected
     before="$(store_size_mb "${root}")"
+    inventory="$(mktemp)"
+    used_images="$(mktemp)"
+    candidates="$(mktemp)"
+    newest="$(mktemp)"
+    trap 'rm -f "${inventory}" "${used_images}" "${candidates}" "${newest}"; trap - RETURN' RETURN
+
+    image_list="$(docker image ls --all --no-trunc \
+        --format '{{.Repository}}'$'\t''{{.Tag}}'$'\t''{{.ID}}' 2>&1)" || {
+        warn "ERROR: docker image ls failed: ${image_list}"
+        return 1
+    }
+    if grep -qi '^Error response from daemon' <<<"${image_list}"; then
+        warn "ERROR: docker image ls reported: ${image_list}"
+        return 1
+    fi
+
+    # A container's `.Image` is the daemon's image id. Retain every image any
+    # container refers to, regardless of that container's state.
+    container_ids="$(docker ps -aq --no-trunc 2>&1)" || {
+        warn "ERROR: docker ps -aq failed: ${container_ids}"
+        return 1
+    }
+    if grep -qi '^Error response from daemon' <<<"${container_ids}"; then
+        warn "ERROR: docker ps -aq reported: ${container_ids}"
+        return 1
+    fi
+    while IFS= read -r image_id; do
+        [[ -n "${image_id}" ]] || continue
+        local inspected
+        inspected="$(docker inspect --format '{{.Image}}' "${image_id}" 2>&1)" || {
+            warn "ERROR: docker inspect ${image_id} failed: ${inspected}"
+            return 1
+        }
+        [[ -n "${inspected}" ]] && printf '%s\n' "${inspected}" >>"${used_images}"
+    done <<<"${container_ids}"
+
+    while IFS=$'\t' read -r repository tag image_id ignored; do
+        [[ -n "${image_id}" ]] || continue
+        local inspected
+        inspected="$(docker image inspect --format '{{.Id}}'$'\t''{{.Created}}'$'\t''{{.Metadata.LastTagTime}}' "${image_id}" 2>&1)" || {
+            warn "ERROR: docker image inspect ${image_id} failed: ${inspected}"
+            return 1
+        }
+        IFS=$'\t' read -r image_id created last_tagged <<<"${inspected}"
+        [[ -n "${image_id}" && -n "${created}" ]] || {
+            warn "ERROR: docker image inspect returned incomplete metadata for ${image_id}"
+            return 1
+        }
+        created_epoch="$(date -d "${created}" +%s 2>/dev/null)" || {
+            warn "ERROR: cannot parse image Created time for ${image_id}: ${created}"
+            return 1
+        }
+        # Docker reports an absent LastTagTime as an empty value or its zero
+        # timestamp. In both forms, the governing clause falls back to Created.
+        if [[ -z "${last_tagged}" || "${last_tagged}" == '<no value>' || "${last_tagged}" == '<nil>' || "${last_tagged}" == 0001-01-01* ]]; then
+            tagged_epoch="${created_epoch}"
+        else
+            tagged_epoch="$(date -d "${last_tagged}" +%s 2>/dev/null)" || {
+                warn "ERROR: cannot parse image LastTagTime for ${image_id}: ${last_tagged}"
+                return 1
+            }
+        fi
+        series="$(sed -E 's/-v[0-9]+\.[0-9]+\.[0-9]+$//' <<<"${tag}")"
+        key="${repository}"$'\t'"${series}"
+        # Keep an image if it is newest in ANY series to which it belongs.
+        printf '%s\t%s\t%s\t%s\t%s\n' "${key}" "${created_epoch}" "${image_id}" "${tagged_epoch}" "${tag}" >>"${inventory}"
+    done <<<"${image_list}"
+
+    # The first three fields form the tag-series index. Sorting makes the
+    # newest image for each repository/series the first row in its group.
+    sort -t $'\t' -k1,1 -k2,2 -k3,3nr "${inventory}" |
+        awk -F '\t' '!seen[$1 FS $2]++ { print $1 FS $2 FS $4 }' >"${newest}"
+
+    now="$(date +%s)"
+    while IFS=$'\t' read -r repository series created_epoch image_id tagged_epoch tag; do
+        [[ -n "${image_id}" ]] || continue
+        protected=no
+        while IFS=$'\t' read -r newest_repository newest_series newest_id; do
+            [[ "${repository}" == "${newest_repository}" && "${series}" == "${newest_series}" && "${image_id}" == "${newest_id}" ]] && {
+                protected=yes
+                break
+            }
+        done <"${newest}"
+        [[ "${protected}" == yes ]] && continue
+
+        while IFS= read -r current; do
+            [[ "${image_id}" == "${current}" || "${image_id}" == "${current}"* || "${current}" == "${image_id}"* ]] && {
+                protected=yes
+                break
+            }
+        done <"${used_images}"
+        [[ "${protected}" == yes ]] && continue
+
+        (( now - tagged_epoch > hours * 3600 )) || continue
+        printf '%s\t%s\t%s\n' "${repository}" "${tag}" "${image_id}" >>"${candidates}"
+    done <"${inventory}"
+
     if [[ "${apply}" == "yes" ]]; then
-        docker image prune -af --filter "until=${hours}h" >&2 2>/dev/null || \
-            warn "  WARNING: image prune returned non-zero"
+        while IFS=$'\t' read -r repository tag image_id; do
+            [[ -n "${image_id}" ]] || continue
+            progress "  removing image: ${repository}:${tag} ${image_id}"
+            docker image rm "${image_id}" >&2 || {
+                warn "  WARNING: image removal failed: ${repository}:${tag} ${image_id}"
+            }
+        done <"${candidates}"
         docker builder prune -af >&2 2>/dev/null || true
         after="$(store_size_mb "${root}")"
         echo $(( before > after ? before - after : 0 ))
     else
-        progress "  (dry run: image/builder prune not executed; horizon ${hours}h)"
+        progress "  (dry run: selected images and builder cache not removed; horizon ${hours}h)"
         echo 0
     fi
 }
