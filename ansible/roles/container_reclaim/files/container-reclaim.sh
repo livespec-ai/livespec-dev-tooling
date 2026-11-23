@@ -397,11 +397,13 @@ prune_images() {
             fi
         done <<<"${image_rows}"
 
+        local -A protected_ids=()
+        for series in "${!newest_ids[@]}"; do
+            protected_ids["${newest_ids[${series}]}"]=1
+        done
         while IFS=$'\t' read -r repo tag id; do
             [[ -n "${repo}" && -n "${tag}" && -n "${id}" ]] || continue
-            tag_series_key "${repo}" "${tag}"
-            series="${REPLY}"
-            [[ "${newest_ids[${series}]}" == "${id}" ]] && continue
+            [[ -n "${protected_ids[${id}]+x}" ]] && continue
             [[ -n "${used_images[${id}]+x}" ]] && continue
             (( now - age_by_id["${id}"] > horizon )) || continue
             remove_ids+=("${id}")

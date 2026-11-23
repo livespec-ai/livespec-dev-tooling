@@ -27,6 +27,7 @@ printf '%s\n' "$*" >>"$STUB_DOCKER_LOG"
 
 created="$(date -u -d '10 days ago' +%Y-%m-%dT%H:%M:%S.%NZ)"
 recent="$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S.%NZ)"
+newer="$(date -u -d '5 days ago' +%Y-%m-%dT%H:%M:%S.%NZ)"
 
 case "${1:-}" in
     ps)
@@ -49,12 +50,16 @@ case "${1:-}" in
                     $'ghcr.io/example/sandbox\tpython-v3.0.0-build\tsha256:build-suffixed' \
                     $'ghcr.io/example/sandbox\tpython-rust-v1.0.0\tsha256:rust-current' \
                     $'ghcr.io/example/sandbox\trollback-v1.0.0\tsha256:recent-retagged' \
-                    $'ghcr.io/example/sandbox\tused-v1.0.0\tsha256:stopped-used'
+                    $'ghcr.io/example/sandbox\tused-v1.0.0\tsha256:stopped-used' \
+                    $'ghcr.io/example/sandbox\tmulti-v1.0.0\tsha256:multi-tagged' \
+                    $'ghcr.io/example/sandbox\tmulti-v2.0.0\tsha256:multi-current' \
+                    $'ghcr.io/example/sandbox\tsolo-v1.0.0\tsha256:multi-tagged'
                 ;;
             inspect)
                 id="${*: -1}"
                 case "$id" in
                     sha256:recent-retagged) printf '%s\t%s\n' "$created" "$recent" ;;
+                    sha256:multi-current) printf '%s\t%s\n' "$newer" "$newer" ;;
                     *) printf '%s\t%s\n' "$created" "$created" ;;
                 esac
                 ;;
@@ -101,6 +106,8 @@ def _run_image_leg(*, tmp_path: Path) -> None:
         "recent-retagged",
         "stopped-used",
         "build-suffixed",
+        "multi-tagged",
+        "multi-current",
     ):
         _ = (image_state / image_id).touch()
     log = tmp_path / "docker.log"
@@ -145,6 +152,9 @@ def _run_image_leg(*, tmp_path: Path) -> None:
     assert (
         image_state / "recent-retagged"
     ).exists(), "an image re-tagged within the idle horizon must use LastTagTime, not Created"
+    assert (
+        image_state / "multi-tagged"
+    ).exists(), "an image newest in any one of its series must survive its superseded tags"
     assert (
         image_state / "stopped-used"
     ).exists(), "an image used by a stopped container must survive the image leg"
