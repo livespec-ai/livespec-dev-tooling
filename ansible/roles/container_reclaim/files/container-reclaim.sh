@@ -302,14 +302,109 @@ prune_containers() {
 
 prune_images() {
     # SECONDARY LEVER, and it is the smaller half: on vps ~9 GB of image layers
-    # against ~33.8 GB of exited-container writable layers. An image referenced
-    # by a running container is never removed by `image prune -a`, which is the
-    # property that let the hp hotfix reclaim 390 GB with eight dispatches live.
+    # against ~33.8 GB of exited-container writable layers.  Do not delegate
+    # this selection to `docker image prune`: its `until` filter measures
+    # Created, cannot see LastTagTime, and cannot retain one image per tag
+    # series.  The specification calls for all containers, including stopped
+    # ones, to protect their image, so discover references explicitly too.
     local hours="$1" apply="$2" before after root="$3"
+    local image_rows container_ids id repo tag created tagged created_at age_at
+    local now horizon series line container_image
+    local -a remove_ids=()
+    local -A used_images=() created_by_id=() age_by_id=()
+    local -A newest_created=() newest_ids=() image_repo=() image_tag=()
+
     before="$(store_size_mb "${root}")"
     if [[ "${apply}" == "yes" ]]; then
-        docker image prune -af --filter "until=${hours}h" >&2 2>/dev/null || \
-            warn "  WARNING: image prune returned non-zero"
+        if ! image_rows="$(docker image ls --no-trunc \
+            --format '{{.Repository}}'$'\t''{{.Tag}}'$'\t''{{.ID}}' 2>&1)"; then
+            warn "  WARNING: image inventory failed: ${image_rows}"
+            echo 0
+            return 0
+        fi
+        if ! container_ids="$(docker ps -aq 2>&1)"; then
+            warn "  WARNING: container inventory failed: ${container_ids}"
+            echo 0
+            return 0
+        fi
+
+        # An image may carry more than one tag, so protect an id if it is newest
+        # for *any* of its series.  Removing it because of another old tag would
+        # violate that series' one-current-image guarantee.
+        while IFS= read -r id; do
+            [[ -n "${id}" ]] || continue
+            if ! container_image="$(docker container inspect --format '{{.Image}}' "${id}" 2>&1)"; then
+                warn "  WARNING: image reference lookup failed for ${id}: ${container_image}"
+                echo 0
+                return 0
+            fi
+            [[ -n "${container_image}" ]] && used_images["${container_image}"]=1
+        done <<<"${container_ids}"
+
+        now="$(date +%s)"
+        horizon=$(( hours * 3600 ))
+        while IFS=$'\t' read -r repo tag id; do
+            [[ -n "${repo}" && -n "${tag}" && -n "${id}" ]] || continue
+            image_repo["${id}"]="${repo}"
+            image_tag["${id}"]="${tag}"
+            if [[ -z "${created_by_id[${id}]+x}" ]]; then
+                if ! line="$(docker image inspect \
+                    --format '{{.Created}}'$'\t''{{.Metadata.LastTagTime}}' "${id}" 2>&1)"; then
+                    warn "  WARNING: image metadata lookup failed for ${id}: ${line}"
+                    echo 0
+                    return 0
+                fi
+                IFS=$'\t' read -r created tagged <<<"${line}"
+                created_at="$(date -d "${created}" +%s 2>/dev/null)" || {
+                    warn "  WARNING: image Created time is unreadable for ${id}: ${created}"
+                    echo 0
+                    return 0
+                }
+                age_at="${created_at}"
+                if [[ -n "${tagged}" && "${tagged}" != '<no value>' && \
+                      "${tagged}" != '0001-01-01T00:00:00Z' && \
+                      "${tagged}" != 0001-01-01T00:00:00.* ]]; then
+                    age_at="$(date -d "${tagged}" +%s 2>/dev/null)" || {
+                        warn "  WARNING: image LastTagTime is unreadable for ${id}: ${tagged}"
+                        echo 0
+                        return 0
+                    }
+                fi
+                created_by_id["${id}"]="${created_at}"
+                age_by_id["${id}"]="${age_at}"
+            fi
+            series="${tag%-v[0-9]*.[0-9]*.[0-9]*}"
+            series="${repo}"$'\t'"${series}"
+            # Docker can report equal Created timestamps for images built in the
+            # same second.  Keep the later inventory record in that tie so a
+            # series still has one deterministic current image.
+            if [[ -z "${newest_created[${series}]+x}" || \
+                  "${created_by_id[${id}]}" -ge "${newest_created[${series}]}" ]]; then
+                newest_created["${series}"]="${created_by_id[${id}]}"
+                newest_ids["${series}"]="${id}"
+            fi
+        done <<<"${image_rows}"
+
+        while IFS=$'\t' read -r repo tag id; do
+            [[ -n "${repo}" && -n "${tag}" && -n "${id}" ]] || continue
+            series="${tag%-v[0-9]*.[0-9]*.[0-9]*}"
+            series="${repo}"$'\t'"${series}"
+            [[ "${newest_ids[${series}]}" == "${id}" ]] && continue
+            [[ -n "${used_images[${id}]+x}" ]] && continue
+            (( now - age_by_id["${id}"] > horizon )) || continue
+            remove_ids+=("${id}")
+        done <<<"${image_rows}"
+
+        # An image can have several old tags in one series.  `docker image rm`
+        # acts on the image id, so remove each selected id once and narrate the
+        # repository/tag/id which made it eligible.
+        local -A removed=()
+        for id in "${remove_ids[@]}"; do
+            [[ -n "${removed[${id}]+x}" ]] && continue
+            removed["${id}"]=1
+            progress "  removing image: ${image_repo[${id}]}:${image_tag[${id}]} (${id})"
+            docker image rm "${id}" >&2 || warn "  WARNING: image removal failed for ${id}"
+        done
         docker builder prune -af >&2 2>/dev/null || true
         after="$(store_size_mb "${root}")"
         echo $(( before > after ? before - after : 0 ))
