@@ -31,7 +31,8 @@
 #   stop      take the worker out of service WITHOUT deleting its Node: the node must be
 #             registered and cordoned, and no Running or Pending pod a DaemonSet does not own
 #             may be bound to it (it never evicts). It stops the kubelet inside the worker
-#             container, then stops the container. The Node object, the kubelet's credentials
+#             container, then stops the VM unit homelab-worker-container.service that
+#             supervises the container (a bare docker stop is restarted by it). The Node object, the kubelet's credentials
 #             and the worker queues are left as they are, so `start` returns the worker.
 #   start     the reversal of stop: start the worker container and its kubelet. It does not
 #             uncordon (that is ansible/k3s-window-drain.yml, action uncordon).
@@ -229,17 +230,23 @@ for p in json.load(sys.stdin).get("items", []):
   if running="$(in_vm docker inspect -f '{{.State.Running}}' "$node" 2>/dev/null)" && [ "$running" = true ]; then
     in_vm docker exec "$node" systemctl stop kubelet || die "could not stop the kubelet in container $node; the container was left running"
     say "kubelet stopped in container $node"
-    in_vm docker stop "$node" >/dev/null || die "could not stop container $node"
-    say "container $node stopped; Node $node is still registered and cordoned"
-  else
-    say "container $node is absent or already stopped; Node $node is still registered"
   fi
+  # The VM's homelab-worker-container.service supervises the container with Restart=on-failure,
+  # so a bare `docker stop` makes `docker start -a` exit non-zero and systemd starts it again
+  # within seconds (measured 2026-11-24). Stop the unit; its ExecStop is the docker stop.
+  in_vm systemctl stop homelab-worker-container.service || die "could not stop homelab-worker-container.service in VM $node"
+  running="$(in_vm docker inspect -f '{{.State.Running}}' "$node" 2>/dev/null)" || running=false
+  [ "$running" != true ] || die "container $node is still running after its unit was stopped"
+  # Disabled too, so the stop survives a reboot of the VM; start re-enables it.
+  in_vm systemctl disable homelab-worker-container.service || die "could not disable homelab-worker-container.service in VM $node"
+  say "container $node stopped through homelab-worker-container.service; Node $node is still registered and cordoned"
 }
 
 # do_start: the reversal of do_stop. Starts the container and its kubelet; never uncordons.
 do_start() {
   in_vm true || die "could not reach VM $node through limactl; nothing was changed"
-  in_vm docker start "$node" >/dev/null || die "could not start container $node"
+  in_vm systemctl enable homelab-worker-container.service || die "could not enable homelab-worker-container.service in VM $node"
+  in_vm systemctl start homelab-worker-container.service || die "could not start homelab-worker-container.service in VM $node"
   in_vm docker exec "$node" systemctl start kubelet || die "could not start the kubelet in container $node"
   say "container $node and its kubelet started; Node $node is still cordoned until the uncordon action lifts it"
 }
