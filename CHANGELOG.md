@@ -58,6 +58,13 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.237.1](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.237.0...v1.237.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **homelab-worker:** stop takes the M4 worker down through the VM unit that supervises its container (livespec-dev-tooling-4kbinf) ([fa17ce4](https://github.com/livespec-ai/livespec-dev-tooling/commit/fa17ce4d9e7b5c003ce4eaeb4ddc46e20f0a6ed7))
+
 ## [1.237.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.3...v1.237.0) (2026-11-24)
 
 
