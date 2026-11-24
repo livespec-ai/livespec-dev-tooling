@@ -101,8 +101,8 @@ _STUB_LIMACTL = """#!/bin/bash
 printf 'limactl %s\\n' "$*" >> "$STUB_STATE/calls.log"
 case "$*" in
   *"docker inspect"*) [ -f "$STUB_STATE/running" ] && echo true || echo false ;;
-  *"docker stop"*) rm -f "$STUB_STATE/running" ;;
-  *"docker start"*) : > "$STUB_STATE/running" ;;
+  *"systemctl stop homelab-worker-container.service"*) [ -f "$STUB_STATE/unit-ignores-stop" ] || rm -f "$STUB_STATE/running" ;;
+  *"systemctl start homelab-worker-container.service"*) : > "$STUB_STATE/running" ;;
 esac
 exit 0
 """
@@ -277,10 +277,20 @@ def test_stop_stops_the_kubelet_then_the_container_and_never_deletes_the_node(en
     assert result.returncode == 0, result.stderr
     calls = _calls(env)
     assert any("docker exec" in c and "systemctl stop kubelet" in c for c in calls)
-    assert any(c.endswith(f"docker stop {_NODE}") for c in calls)
+    assert any(c.endswith("systemctl stop homelab-worker-container.service") for c in calls)
+    assert not any(c.endswith(f"docker stop {_NODE}") for c in calls)
+    assert any(c.endswith("systemctl disable homelab-worker-container.service") for c in calls)
     assert not any("delete" in c for c in calls)
     assert not (env.state / "running").exists()
     assert not any(c.startswith("remove-worker.sh") for c in calls)
+
+
+def test_stop_fails_when_the_container_is_still_running_after_the_unit_stop(env: _Env) -> None:
+    _cordon(env)
+    (env.state / "unit-ignores-stop").write_text("", encoding="utf-8")
+    result = _run(env=env, action="stop")
+    assert result.returncode != 0
+    assert "still running" in result.stderr
 
 
 def test_stop_refuses_an_uncordoned_node_and_changes_nothing(env: _Env) -> None:
@@ -306,7 +316,8 @@ def test_start_starts_the_container_and_kubelet_and_never_uncordons(env: _Env) -
     result = _run(env=env, action="start")
     assert result.returncode == 0, result.stderr
     calls = _calls(env)
-    assert any(c.endswith(f"docker start {_NODE}") for c in calls)
+    assert any(c.endswith("systemctl enable homelab-worker-container.service") for c in calls)
+    assert any(c.endswith("systemctl start homelab-worker-container.service") for c in calls)
     assert any("systemctl start kubelet" in c for c in calls)
     assert not any("uncordon" in c or "delete" in c for c in calls)
 
