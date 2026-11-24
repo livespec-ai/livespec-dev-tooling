@@ -58,6 +58,19 @@ returned exit 1 when `.github/workflows/ci.yml` was missing; it
 now returns exit 0 silently, with the test renamed from
 `test_missing_ci_yml_fails` to `test_missing_ci_yml_is_graceful`.
 
+## [1.237.0](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.3...v1.237.0) (2026-11-24)
+
+
+### Features
+
+* **gate:** the delegated gate outcome event carries the gate Job's queue wait and run duration (livespec-dev-tooling-7g45w6) ([c42c1a7](https://github.com/livespec-ai/livespec-dev-tooling/commit/c42c1a781099865f3e7c9543b4b79019bd86270f))
+* **homelab-worker:** a stop action takes the M4 worker out of service and keeps its Node, with a start reversal (livespec-dev-tooling-4kbinf) ([cc01aa4](https://github.com/livespec-ai/livespec-dev-tooling/commit/cc01aa4190d6177238f8b9ac83044decdf5d0d39))
+
+
+### Bug Fixes
+
+* The red-green-replay revert check leaves a gpg-agent daemon running per verification after removing its temporary GNUPGHOME; each orphan keeps a dead session live for dev host retention (livespec-dev-tooling-hlyayb) ([eb25092](https://github.com/livespec-ai/livespec-dev-tooling/commit/eb25092d97a2aca0c58b8a9b1979cc0db6b5cc29))
+
 ## [1.236.3](https://github.com/livespec-ai/livespec-dev-tooling/compare/v1.236.2...v1.236.3) (2026-11-23)
 
 
