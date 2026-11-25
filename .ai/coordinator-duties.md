@@ -255,6 +255,15 @@ verified gone) and that a value-free name sweep shows no reader of is removed by
 owner's writer, with a name-only read-back. Maintainer [6tgd2z 2026-11-17T22:32:27Z], on
 LIVESPEC_RECOVERY_APP_ID/_PRIVATE_KEY: "These are NOT MINE.  You need to fix it yourself."
 
+**Rule RETRO-IS-THE-MAINTAINERS: a retrospective is the maintainer's, and nothing else is carved out.** No coordinator
+or seat attests, closes or answers a retrospective. A retro stays open until the maintainer does it with the owning
+seat, whatever delegation is in force (R301, R493). The rule covers retrospectives ONLY. Every other valve, attestation,
+picker and judgment stays under the delegation above and is decided, never brought to the maintainer, and this rule is
+no reason to block or to ask him anything. Measured 2026-11-21: a coordinator closed retro livespec-dev-tooling-o6mqy5
+without him; it was reopened 2026-11-23. Maintainer [6tgd2z 2026-11-25], rejecting a draft that also covered "any other
+judgment marked as needing your attestation", verbatim: "That is an open invitation to block and ask me all sorts of
+random, unimportant shit."
+
 **A refused valve is repaired by the coordinator in the same turn.** It reads the whole refusal (`drive.py ... --json`,
 the full `summary`), applies every named remedy with `bd update <id> --body-file`, re-presses, records the basis and
 tells the owning seat; a seat is asked only when the remedy needs its scope or product judgement. Maintainer [6tgd2z
